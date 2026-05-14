@@ -18,12 +18,18 @@
     <style>
         /* 全局表格樣式：保證預覽與列印排版 100% 同步 */
         .ptb {border-collapse:collapse;width:100%;}
-        @media print { .ptb th, .ptb td { font-size:11px !important; padding:2px 3px !important; } }
+        @media print {
+          .ptb th, .ptb td { font-size:9px !important; padding:1px 2px !important; line-height:1.2 !important; }
+          .ptb { font-size:9px !important; }
+          .ptb tr { page-break-inside: avoid; }
+          /* 週表行程頁強制縮小所有文字 */
+          .print-week-table * { font-size:9px !important; line-height:1.2 !important; }
+        }
         .ptb th, .ptb td {border:1px solid #000;padding:4px;color:#000;font-size:13px;}
         .ptb tr {page-break-inside:avoid;}
 
         @media print {
-          @page { size: A4 landscape; margin: 5mm; }
+          @page { size: A4 portrait; margin: 6mm; }
           .no-print, .print\:hidden { display: none !important; }
           body { 
             -webkit-print-color-adjust: exact; 
@@ -1160,14 +1166,14 @@
                   <div className="w-full font-sans text-black">
                           <div className="w-full">
                               <h2 className="text-xl font-black text-center mb-2 whitespace-nowrap" style={{whiteSpace: 'nowrap'}}>外業行程安排 ({formatMinguo(viewWeekDates[0])} ~ {formatMinguo(viewWeekDates[6])})</h2>
-                              <table className="ptb w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px'}} cellPadding="4">
+                              <table className="ptb print-week-table w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px'}} cellPadding="2">
                                   <thead className="bg-gray-200">
                                       <tr>
                                           <th className="w-[85px] text-base">日期</th>
                                           <th className="text-xs w-[35px]" style={{ backgroundColor: '#FBCFE8' }}>經緯</th>
                                           <th className="text-xs w-[35px]" style={{ backgroundColor: '#FEF08A' }}>水準</th>
                                           <th className="text-left px-2 text-base">案名與工作項目</th>
-                                          <th className="text-base" colSpan={maxAttendees}>出勤人員</th>
+                                          <th className="text-base" style={{width:"120px"}}>出勤人員</th>
                                           <th className="w-[35px] text-xs">出勤<br/>人數</th>
                                           <th className="w-[55px] text-base">時間</th>
                                           <th className="w-[80px] text-base">車輛</th>
@@ -1175,7 +1181,7 @@
                                   </thead>
                                   <tbody>
                                       {Object.keys(scheduleByDate).length === 0 && (
-                                        <tr><td colSpan={8 + maxAttendees} className="px-4 py-8 text-gray-500 italic text-center font-bold text-xl">該週尚無排班與請假紀錄</td></tr>
+                                        <tr><td colSpan={8} className="px-4 py-8 text-gray-500 italic text-center font-bold text-xl">該週尚無排班與請假紀錄</td></tr>
                                       )}
                                       {Object.entries(scheduleByDate).map(([date, data]) => {
                                           const shortD = `${parseInt(date.split('-')[1],10)}/${parseInt(date.split('-')[2],10)}(${getDayOfWeek(date)})`;
@@ -1185,13 +1191,13 @@
                                               <Fragment key={date}>
                                                   <tr className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}>
                                                       <td className="font-black text-base whitespace-nowrap">{shortD}</td>
-                                                      <td colSpan={7+maxAttendees} className="text-left font-black text-red-600 px-2 text-base">
+                                                      <td colSpan={7} className="text-left font-black text-red-600 px-2 text-base">
                                                           {pMa.map(getPrintName).join(' ')} {pIn.map(getPrintName).join(' ')}
                                                           {holidays[date] && <span className="ml-2">[{holidays[date]}]</span>}
                                                           {data.leaves.length > 0 && <span className="ml-4">請假名單: {data.leaves.map(l=>`${getPrintName(l.person)}(${l.leaveType})`).join('、')}</span>}
                                                       </td>
                                                   </tr>
-                                                  {data.tasks.length===0 && <tr><td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}/><td colSpan={7+maxAttendees} className="text-gray-500 font-bold italic">當日無排班</td></tr>}
+                                                  {data.tasks.length===0 && <tr><td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}/><td colSpan={7} className="text-gray-500 font-bold italic">當日無排班</td></tr>}
                                                   {data.tasks.map(t => {
                                                       const ext = getExtraEquipments(t); 
                                                       const tCars = t.cars && t.cars.length > 0 ? t.cars : (t.car ? [safeStr(t.car)] : []);
@@ -1206,7 +1212,7 @@
                                                               {t.notes && <span className="text-blue-900 font-bold ml-2 text-sm" style={{ color: '#1e3a8a' }}>※ {t.notes}</span>}
                                                               {t.status==='cancelled' && <div className="text-red-600 text-xs mt-0.5">【已取消：{t.cancelReason}】</div>}
                                                           </td>
-                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} className="font-black text-base px-1">{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
+                                                          <td className="font-black text-sm px-1 text-left">{(t.attendees||[]).map(a=>getPrintName(a)).join('  ')}</td>
                                                           <td className="font-black text-base">{(t.attendees||[]).length||''}</td>
                                                           <td className="font-black text-lg text-blue-800" style={{ color: '#1E40AF' }}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
                                                           <td className="font-bold text-sm">{tCars.length>0?tCars.join(','):''}</td>
