@@ -1,0 +1,2092 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>外業行程排班系統 (極速免登出版)</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 React 與 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- 引入 Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* 全局表格樣式：保證預覽與列印排版 100% 同步 */
+        .ptb {border-collapse:collapse;width:100%;}
+        @media print { .ptb th, .ptb td { font-size:11px !important; padding:2px 3px !important; } }
+        .ptb th, .ptb td {border:1px solid #000;padding:4px;color:#000;font-size:13px;}
+        .ptb tr {page-break-inside:avoid;}
+
+        @media print {
+          @page { size: A4 landscape; margin: 5mm; }
+          .no-print, .print\:hidden { display: none !important; }
+          body { 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+            background-color: white !important; 
+          }
+          /* 月曆列印 */
+          .month-print-container { height: 190mm !important; display: flex !important; flex-direction: column !important; }
+          .month-print-week { flex: 1 !important; min-height: 0 !important; }
+          .month-print-cell { min-height: 0 !important; padding: 1px 2px !important; overflow: hidden !important; }
+          .month-print-text { font-size: 10px !important; line-height: 1.2 !important; }
+          .month-print-date { font-size: 12px !important; }
+          /* 月曆滿版列印專用設定 */
+          .month-print-container { display:flex; flex-direction:column; }
+          .month-print-cell { min-height:0 !important; padding:1px 2px !important; overflow:hidden !important; }
+          .month-print-text { font-size:10px !important; line-height:1.15 !important; }
+          .month-print-date { font-size:12px !important; }
+        }
+        
+        body { margin: 0; padding: 0; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #93c5fd; border-radius: 4px; border: 2px solid #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #3b82f6; }
+    </style>
+</head>
+<body class="bg-gray-100 overflow-hidden h-screen w-screen text-gray-800 font-sans">
+    <div id="root" class="h-full w-full"></div>
+
+    <!-- Firebase 模組載入 -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+        <script>
+        (function() {
+            var _app = null;
+            window.FirebaseAPI = {
+                initializeApp: function(cfg) {
+                    try { _app = firebase.initializeApp(cfg); } catch(e) {
+                        if(e.code==='app/duplicate-app') _app=firebase.app(); else throw e;
+                    }
+                    return _app;
+                },
+                getAuth: function(app) { return firebase.auth(app); },
+                onAuthStateChanged: function(auth,cb){ return auth.onAuthStateChanged(cb); },
+                signInAnonymously: function(auth){ return auth.signInAnonymously(); },
+                createUserWithEmailAndPassword: function(auth,e,p){ return auth.createUserWithEmailAndPassword(e,p); },
+                signInWithEmailAndPassword: function(auth,e,p){ return auth.signInWithEmailAndPassword(e,p); },
+                fbSignOut: function(auth){ return auth.signOut(); },
+                getFirestore: function(app){ return firebase.firestore(app); },
+                collection: function(db,col){ return db.collection(col); },
+                doc: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.doc(a.join('/')); },
+                getDoc: function(ref){ return ref.get(); },
+                setDoc: function(ref,data,opts){ return (opts&&opts.merge)?ref.set(data,{merge:true}):ref.set(data); },
+                deleteDoc: function(ref){ return ref.delete(); },
+                onSnapshot: function(ref,cb){ return ref.onSnapshot(cb); },
+            };
+            window.dispatchEvent(new Event('firebase-ready'));
+        })();
+        </script>
+
+    <script type="text/babel">
+        const initApp = () => {
+            const { useState, useMemo, useEffect, Fragment } = React;
+            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
+
+            // --- 雙重防丟失：安全的本地儲存存取 ---
+            const safeSetStorage = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+            const safeGetStorage = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+
+            const safeStr = (v) => {
+                if (v === null || v === undefined) return '';
+                if (typeof v === 'object') { try { return String(v.name || v.id || v.value || JSON.stringify(v)); } catch(e) { return ''; } }
+                return String(v);
+            };
+
+            // --- Firebase 初始化 ---
+            let app = null, auth = null, db = null, appId = 'gt-scheduling-app';
+            try {
+              const firebaseConfig = {
+        apiKey: "AIzaSyB9u7P_mQVebVr3_EVlzS7-xWWjT6WsHus",
+        authDomain: "gt-schedulingsystem.firebaseapp.com",
+        projectId: "gt-schedulingsystem",
+        storageBucket: "gt-schedulingsystem.firebasestorage.app",
+        messagingSenderId: "849830544123",
+        appId: "1:849830544123:web:eed98545936018e22c665e"
+      };
+              app = initializeApp(firebaseConfig);
+              auth = getAuth(app);
+              db = getFirestore(app);
+            } catch(e) { console.error('Firebase init:', e); }
+
+
+            // ===== 帳號管理工具 =====
+            const ROLES = { SA:'superadmin', ADMIN:'admin', EDITOR:'editor', VIEWER:'viewer' };
+            const ROLE_LABELS = { superadmin:'最高管理員', admin:'管理員', editor:'編輯者', viewer:'唯讀者' };
+            const ROLE_COLORS = { superadmin:'bg-red-100 text-red-800 border-red-300', admin:'bg-indigo-100 text-indigo-800 border-indigo-300', editor:'bg-green-100 text-green-800 border-green-300', viewer:'bg-gray-100 text-gray-700 border-gray-300' };
+            const hashPw = (pw) => { let h=5381; for(let i=0;i<pw.length;i++){h=((h<<5)+h)^pw.charCodeAt(i);h=h>>>0;} return h.toString(16)+'_'+btoa(unescape(encodeURIComponent(pw))).split('').reverse().join('').substring(0,8); };
+            const toEmail = (name) => encodeURIComponent(name).replace(/%/g,'x') + '@gt.internal';
+            const getAccounts = () => { try { const r=localStorage.getItem('__accs'); if(r) return JSON.parse(r); } catch(e){} return []; };
+            const saveAccounts = (a) => localStorage.setItem('__accs', JSON.stringify(a));
+            const getSession = () => { try { const s=localStorage.getItem('__sess'); return s?JSON.parse(s):null; } catch(e){ return null; } };
+            const saveSession = (u) => localStorage.setItem('__sess', JSON.stringify(u));
+            const clearSession = () => { localStorage.removeItem('__sess'); };
+            const saveUserRole = async (uid, role, name) => { if(!db) return; try { await setDoc(doc(db,'artifacts',appId,'public','data','userRoles',uid),{role,displayName:name,updatedAt:new Date().toISOString()}); } catch(e){} };
+            const getUserRole = async (uid) => { if(!db) return 'editor'; try { const s=await getDoc(doc(db,'artifacts',appId,'public','data','userRoles',uid)); if(s.exists) return s.data().role||'editor'; } catch(e){} return 'editor'; };
+
+            const CUSTOM_SORT_ORDER = ['世鐘','正武','博文','雅淳','志軒','毓良','世強','玉滽','朝新','御銘','姿婷','坤樺','子桓','大谷','衡峻','文財','雅婷','桂蓉','詠琪','雅琤','清新','溏','濡'];
+            const DEFAULT_MANAGERS = ['世鐘','正武','博文','雅淳'];
+            const DEFAULT_INDOORS = ['雅婷','桂蓉','詠琪','雅琤'];
+            const DEFAULT_CARS = ['','白小柴','FREECA','白YOTA','灰勾福','白仙草','白崔兒','得利卡'];
+            const ITEM_TYPES = ['鑑定','初勘','監測','測量','鑑定測量','未報勘驗','透地雷達','教育訓練','會議/討論'];
+            const LEAVE_CATEGORIES = ['特休','事假','病假','補休','公假','婚/喪/產假','臨時請假','其他'];
+            const CANCEL_REASONS = ['天氣下雨','颱風停班','單位取消','延後鑑定','其他(請註明)'];
+
+            const EQ_GROUPS = { '監測': ['傾度盤','傾斜管','應變計','水位計'], '漏水': ['熱像儀','水分計','內視鏡','聽診器','管線探測器'], '其他': ['透地雷達','輪距儀'] };
+            const EQ_KEY_MAP = { '傾度盤':'hasInclinometer','傾斜管':'hasTiltTube','應變計':'hasStrainGauge','水位計':'hasWaterLevel','熱像儀':'hasThermal','水分計':'hasMoistureMeter','內視鏡':'hasEndoscope','聽診器':'hasStethoscope','管線探測器':'hasPipeLocator','透地雷達':'hasGPR','輪距儀':'hasOdometer' };
+
+            const getItemColor = (type, isCancelled) => {
+              if (isCancelled) return 'bg-gray-100 text-gray-400 line-through opacity-60';
+              if (['鑑定','測量','鑑定測量'].includes(type)) return 'bg-blue-50 text-blue-700 border-blue-200';
+              if (type === '初勘') return 'bg-purple-50 text-purple-700 border-purple-200';
+              if (type === '監測') return 'bg-teal-50 text-teal-700 border-teal-200';
+              if (type === '未報勘驗') return 'bg-orange-50 text-orange-700 border-orange-200';
+              return 'bg-gray-50 text-gray-700 border-gray-200'; 
+            };
+
+            const formatDateStr = (d) => {
+              if (!d) return '';
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${y}-${m}-${day}`;
+            };
+            const todayStr = formatDateStr(new Date());
+
+            const getDatesInRange = (s, e) => {
+              const start = new Date(s), end = new Date(e || s), a = [];
+              let c = new Date(start);
+              if (c > end) return [s];
+              while (c <= end) { a.push(formatDateStr(c)); c.setDate(c.getDate() + 1); }
+              return a;
+            };
+            const getMonday = d => { const dt = new Date(d), day = dt.getDay(); return new Date(dt.setDate(dt.getDate() - day + (day === 0 ? -6 : 1))); };
+            const formatMinguo = d => d ? `民國${parseInt(d.split('-')[0], 10) - 1911}年${d.split('-')[1]}月${d.split('-')[2]}日` : '';
+            const getDayOfWeek = d => ['日','一','二','三','四','五','六'][new Date(d).getDay()];
+
+            // --- SVG 圖示 ---
+            const SvgIcon = ({ name, className }) => {
+              const icons = {
+                calendar: <g><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></g>,
+                users: <g><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></g>,
+                plus: <g><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></g>,
+                trash: <g><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></g>,
+                wrench: <g><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></g>,
+                edit: <g><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></g>,
+                car: <g><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></g>,
+                userX: <g><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></g>,
+                printer: <g><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></g>,
+                download: <g><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></g>,
+                upload: <g><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></g>,
+                barChart: <g><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></g>,
+                settings: <g><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></g>,
+                search: <g><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></g>,
+                copy: <g><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></g>,
+                list: <g><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></g>,
+                calendarDays: <g><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></g>,
+                chevronLeft: <g><polyline points="15 18 9 12 15 6"/></g>,
+                chevronRight: <g><polyline points="9 18 15 12 9 6"/></g>,
+                slash: <g><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></g>,
+                checkSquare: <g><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></g>,
+                x: <g><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></g>,
+                check: <g><polyline points="20 6 9 17 4 12"/></g>,
+                alert: <g><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></g>,
+                cloud: <g><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></g>,
+                cloudOff: <g><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"/><line x1="1" y1="1" x2="23" y2="23"/></g>
+              };
+              return (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                  {icons[name] || <circle cx="12" cy="12" r="10"/>}
+                </svg>
+              );
+            };
+
+            const ShortNameInput = ({ person, defaultVal, onSave }) => {
+              const [val, setVal] = useState(defaultVal || '');
+              useEffect(() => { setVal(defaultVal || ''); }, [defaultVal]);
+              return (
+                  <input type="text" maxLength={2} placeholder={person.slice(-1)} value={val}
+                         onChange={e => setVal(e.target.value)} onBlur={() => onSave(person, val)}
+                         className="border rounded p-1 text-center font-black outline-none focus:border-indigo-500 text-indigo-700 text-sm w-full shadow-sm" />
+              )
+            };
+
+            const AutocompleteInput = ({ value, onChange, options, name, placeholder, required }) => {
+              const [show, setShow] = useState(false);
+              const filtered = useMemo(() => {
+                if (!value || safeStr(value).trim() === '') return []; 
+                return (options||[]).filter(opt => opt && safeStr(opt).toLowerCase().includes(safeStr(value).toLowerCase()) && opt !== value);
+              }, [value, options]);
+
+              return (
+                <div className="relative w-full">
+                  <input type="text" name={name} value={value} 
+                         onChange={e => { onChange(e); setShow(true); }} 
+                         onFocus={() => setShow(true)}
+                         onBlur={() => setTimeout(() => setShow(false), 200)} 
+                         placeholder={placeholder} className="w-full border-2 p-2 rounded-lg outline-none font-bold focus:border-blue-500 text-base" required={required} autoComplete="off" />
+                  {show && filtered.length > 0 && (
+                    <ul className="absolute z-50 w-full bg-white border border-gray-200 max-h-48 overflow-y-auto rounded shadow-xl mt-1">
+                      {filtered.map((opt, i) => <li key={i} onMouseDown={() => { onChange({ target: { name, value: opt } }); setShow(false); }} className="px-3 py-2 cursor-pointer hover:bg-blue-50 text-base font-bold text-gray-700">{safeStr(opt)}</li>)}
+                    </ul>
+                  )}
+                </div>
+              );
+            };
+
+            function App() {
+              const getSession=()=>{try{const s=localStorage.getItem('__sess');return s?JSON.parse(s):null;}catch(e){return null;}};
+              const saveSession=(u)=>localStorage.setItem('__sess',JSON.stringify(u));
+              const clearSession=()=>localStorage.removeItem('__sess');
+              const [currentAccount,setCurrentAccount]=useState(()=>{
+                const s=getSession();
+                if(!s)return null;
+                const fr=s.displayName&&['雅淳','世鐘'].includes(s.displayName)?'superadmin':s.role;
+                return fr!==s.role?{...s,role:fr}:s;
+              });
+              const [loginPage,setLoginPage]=useState(()=>!getSession());
+              const [loginForm,setLoginForm]=useState({username:'',password:'',error:'',isFirst:false});
+              const [accList,setAccList]=useState(()=>{try{const r=localStorage.getItem('__accs');if(r)return JSON.parse(r);}catch(e){}return[];});
+              const [showAccMgr,setShowAccMgr]=useState(false);
+              const [accMgrTab,setAccMgrTab]=useState('list');
+              const [newAccForm,setNewAccForm]=useState({username:'',displayName:'',role:'editor',password:'',confirm:''});
+              const [newAccError,setNewAccError]=useState('');
+              const [resetTarget,setResetTarget]=useState(null);
+              const [resetPwForm,setResetPwForm]=useState({password:'',confirm:'',error:''});
+              const [editRoleTarget,setEditRoleTarget]=useState(null);
+              const _superNames=['雅淳','世鐘'];
+              const _r=(_superNames.includes(currentAccount?.displayName)&&currentAccount?.role!=='superadmin')?'superadmin':currentAccount?.role;
+              const isSuperAdmin=_r==='superadmin';
+              const isAdmin=['superadmin','admin'].includes(_r);
+              const isEditor=['superadmin','admin','editor'].includes(_r);
+              const isViewer=_r==='viewer';
+
+              useEffect(()=>{
+                if(isViewer&&currentAccount?.displayName){
+                  setLeaveFormData(p=>({...p,person:currentAccount.displayName}));
+                  if(activeTab==='task')setActiveTab('leave');
+                }
+              },[isViewer,currentAccount?.displayName]);
+              // --- LocalStorage 記憶載入 (防重新整理丟失資料) ---
+              const [tasks, setTasks] = useState(() => safeGetStorage('local_tasks') || []);
+              const [leaves, setLeaves] = useState(() => safeGetStorage('local_leaves') || []);
+              const [personnel, setPersonnel] = useState(() => safeGetStorage('local_personnel') || CUSTOM_SORT_ORDER);
+              const [managers, setManagers] = useState(() => safeGetStorage('local_managers') || DEFAULT_MANAGERS);
+              const [indoors, setIndoors] = useState(() => safeGetStorage('local_indoors') || DEFAULT_INDOORS);
+              const [shortNames, setShortNames] = useState(() => safeGetStorage('local_shortNames') || {}); 
+              const [cars, setCars] = useState(() => safeGetStorage('local_cars') || DEFAULT_CARS); 
+              const [customEqsList, setCustomEqsList] = useState(() => safeGetStorage('local_eqs') || []);
+
+              const fileInputRef = React.useRef(null); // 用於匯入按鈕
+
+              // 自動備份至 LocalStorage
+              useEffect(() => safeSetStorage('local_tasks', tasks), [tasks]);
+              useEffect(() => safeSetStorage('local_leaves', leaves), [leaves]);
+              useEffect(() => safeSetStorage('local_personnel', personnel), [personnel]);
+              useEffect(() => safeSetStorage('local_managers', managers), [managers]);
+              useEffect(() => safeSetStorage('local_indoors', indoors), [indoors]);
+              useEffect(() => safeSetStorage('local_shortNames', shortNames), [shortNames]);
+              useEffect(() => safeSetStorage('local_cars', cars), [cars]);
+              useEffect(() => safeSetStorage('local_eqs', customEqsList), [customEqsList]);
+              
+              const [newEmp, setNewEmp] = useState({ n: '', job: 'field' });
+              const [newCarName, setNewCarName] = useState('');
+              const [newEqName, setNewEqName] = useState('');
+              const [newEqCat, setNewEqCat] = useState('');
+
+              const [user, setUser] = useState(null);
+              const [dbConnected, setDbConnected] = useState(false);
+              const [activeTab, setActiveTab] = useState('task');
+              const [editingTaskId, setEditingTaskId] = useState(null);
+              const [editingLeaveId, setEditingLeaveId] = useState(null);
+              const [isPreviewMode, setIsPreviewMode] = useState(false);
+              const [viewMode, setViewMode] = useState('week'); 
+              const [viewDateStr, setViewDateStr] = useState(todayStr);
+              const [searchQuery, setSearchQuery] = useState('');
+              
+              const [expandedWeekIdx, setExpandedWeekIdx] = useState(null);
+              const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+              const [showBatchModal, setShowBatchModal] = useState(false);
+              const initialBatchData = { attendees: [], cars: [], eqTheodolite: '', eqLevel: '', hasInclinometer: false, hasTiltTube: false, hasStrainGauge: false, hasWaterLevel: false, hasThermal: false, hasMoistureMeter: false, hasEndoscope: false, hasStethoscope: false, hasPipeLocator: false, hasGPR: false, hasOdometer: false, customEqs: [] };
+              const [batchData, setBatchData] = useState(initialBatchData);
+              const [dialog, setDialog] = useState({ isOpen: false, type: 'confirm', title: '', message: '', confirmText: '確認', cancelText: '取消', onConfirm: null, onCancel: null });
+              const [deleteGroupModal, setDeleteGroupModal] = useState({ isOpen: false, groupId: null, dates: [] });
+              const [showPrintHint, setShowPrintHint] = useState(false); 
+
+              const [formData, setFormData] = useState({ startDate: todayStr, endDate: todayStr, time: '0900', timeSlot: '自動判定', projectName: '', households: '', itemType: '鑑定', notes: '', eqTheodolite: '', eqLevel: '', attendees: [], cars: [], customEqs: [], status: 'active', cancelReason: '', siteVisitDone: false });
+              const [dailyOverrides, setDailyOverrides] = useState({});
+              const [overrideModal, setOverrideModal] = useState({ isOpen: false, date: null, data: null });
+              const [leaveFormData, setLeaveFormData] = useState({ startDate: todayStr, endDate: todayStr, person: '', leaveType: '全天', leaveCategory: '特休', leaveNotes: '' });
+
+              const [holidays, setHolidays] = useState({});
+              const [fetchedYears, setFetchedYears] = useState(new Set());
+
+
+              const currentTab = activeTab;
+
+              const uniqueProjectNames = useMemo(() => [...new Set((tasks||[]).map(t=>safeStr(t?.projectName)).filter(Boolean))], [tasks]);
+              const formDates = useMemo(() => getDatesInRange(formData.startDate, formData.endDate), [formData.startDate, formData.endDate]);
+              
+              useEffect(() => {
+                if (personnel.length > 0 && !personnel.includes('雅淳')) setPersonnel(p => Array.from(new Set(['雅淳', ...p])));
+                if (managers.length > 0 && !managers.includes('雅淳')) setManagers(p => Array.from(new Set(['雅淳', ...p])));
+              }, [personnel, managers]);
+              useEffect(()=>{
+                if(personnel.length===0)return;
+                let accs=getAccounts(),changed=false;
+                if(accs.length===0){accs=personnel.map(n=>({id:'u_'+n,username:n,displayName:n,role:n==='雅淳'?'superadmin':'editor',passwordHash:null,createdAt:new Date().toISOString()}));changed=true;}
+                else{personnel.forEach(n=>{if(!accs.find(a=>a.username===n)){accs.push({id:'u_'+n,username:n,displayName:n,role:'editor',passwordHash:null,createdAt:new Date().toISOString()});changed=true;}});accs=accs.map(a=>{const fr=getFixedRole(a.displayName,a.username,a.role);if(fr!==a.role){changed=true;return{...a,role:fr};}return a;});}
+                if(changed){saveAccounts(accs);setAccList(accs);}else setAccList(accs);
+              },[personnel]);
+
+              useEffect(() => {
+                if (!auth) return;
+                const initAuth = async () => {
+                  try { await signInAnonymously(auth); } catch (err) {}
+                };
+                initAuth();
+                return onAuthStateChanged(auth, setUser);
+              }, []);
+
+              // Firebase 監聽 (雲端資料覆蓋本地)
+              useEffect(() => {
+                if (!user || !db) return;
+                setDbConnected(true);
+
+                const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
+                    if(!s.empty) setTasks(s.docs.map(d => ({...d.data(), id: d.id, customEqs: d.data().customEqs||[], attendees: d.data().attendees||[], cars: d.data().cars||[]})));
+                }, () => {});
+
+                const unsubLeaves = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'leaves'), (s) => {
+                    if(!s.empty) setLeaves(s.docs.map(d => ({ ...d.data(), id: d.id, person: safeStr(d.data().person), leaveCategory: safeStr(d.data().leaveCategory), leaveType: safeStr(d.data().leaveType), leaveNotes: safeStr(d.data().leaveNotes), date: safeStr(d.data().date) })));
+                }, () => {});
+
+                const unsubPersonnel = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), (s) => {
+                    if (s.exists() && s.data().names) {
+                        setPersonnel(s.data().names); setManagers(s.data().managers||[]); setIndoors(s.data().indoors||[]); setShortNames(s.data().shortNames||{}); 
+                    } else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: CUSTOM_SORT_ORDER, managers: DEFAULT_MANAGERS, indoors: DEFAULT_INDOORS, shortNames: {} }).catch(()=>{});
+                }, () => {});
+
+                const unsubCars = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), (s) => {
+                    if (s.exists() && s.data().list) setCars(s.data().list);
+                    else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: DEFAULT_CARS }).catch(()=>{});
+                }, () => {});
+
+                const unsubEqs = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), (s) => {
+                    if (s.exists() && s.data().list) {
+                        const parsedList = (s.data().list || []).filter(item => item !== null && item !== undefined).map(item => typeof item === 'string' ? { name: item, category: '其他' } : { name: safeStr(item?.name||item), category: safeStr(item?.category||'其他') });
+                        setCustomEqsList(parsedList);
+                    } else {
+                        setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: [] }).catch(()=>{});
+                    }
+                }, () => {});
+
+                return () => { unsubTasks(); unsubLeaves(); unsubPersonnel(); unsubCars(); unsubEqs(); };
+              }, [user]);
+
+              useEffect(() => {
+                const year = viewDateStr.split('-')[0];
+                if (fetchedYears.has(year)) return;
+                const fetchHolidays = async () => {
+                  try {
+                    const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${year}.json`);
+                    if (res.ok) {
+                      const data = await res.json();
+                      const holidayMap = {};
+                      data.forEach(d => {
+                        if (d.isHoliday && d.description && !d.description.includes('星期')) {
+                          const fDate = `${d.date.substring(0,4)}-${d.date.substring(4,6)}-${d.date.substring(6,8)}`;
+                          holidayMap[fDate] = String(d.description);
+                        }
+                      });
+                      setHolidays(prev => ({...prev, ...holidayMap}));
+                      setFetchedYears(prev => new Set(prev).add(year));
+                    }
+                  } catch (error) {}
+                };
+                fetchHolidays();
+              }, [viewDateStr, fetchedYears]);
+
+              // 💡 匯出資料功能
+              const exportAllData = () => {
+                  const dataToExport = {
+                      tasks, leaves, personnel, managers, indoors, shortNames, cars, customEqsList
+                  };
+                  const dataStr = JSON.stringify(dataToExport);
+                  const blob = new Blob([dataStr], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `排班系統備份_${formatDateStr(new Date())}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+              };
+
+              const logAction = (action, detail) => {
+                try {
+                  const logs = JSON.parse(localStorage.getItem('__editlogs')||'[]');
+                  logs.unshift({id:Date.now(),time:new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'}),user:currentAccount?.displayName||'未知',action,detail});
+                  if(logs.length>200) logs.splice(200);
+                  localStorage.setItem('__editlogs', JSON.stringify(logs));
+                } catch(e){}
+              };
+              const showAlert = (title, message) => {
+                setDialog({ isOpen: true, type: 'alert', title: safeStr(title), message: safeStr(message), confirmText: '我知道了', cancelText: '', onConfirm: null, onCancel: null });
+              };
+
+              // 💡 匯入資料功能
+              const importAllData = (event) => {
+                  const file = event.target.files[0];
+                  if (!file) return;
+
+                  const reader = new FileReader();
+                  reader.onload = async (e) => {
+                      try {
+                          const importedData = JSON.parse(e.target.result);
+                          if (importedData.tasks) setTasks(importedData.tasks);
+                          if (importedData.leaves) setLeaves(importedData.leaves);
+                          if (importedData.personnel) setPersonnel(importedData.personnel);
+                          if (importedData.managers) setManagers(importedData.managers);
+                          if (importedData.indoors) setIndoors(importedData.indoors);
+                          if (importedData.shortNames) setShortNames(importedData.shortNames);
+                          if (importedData.cars) setCars(importedData.cars);
+                          if (importedData.customEqsList) setCustomEqsList(importedData.customEqsList);
+
+                          // 同步到雲端
+                          if (db && user) {
+                              for(const t of importedData.tasks||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{});
+                              for(const l of importedData.leaves||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(()=>{});
+                              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: importedData.personnel||CUSTOM_SORT_ORDER, managers: importedData.managers||DEFAULT_MANAGERS, indoors: importedData.indoors||DEFAULT_INDOORS, shortNames: importedData.shortNames||{} }, {merge:true}).catch(()=>{});
+                              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: importedData.cars||DEFAULT_CARS }, {merge:true}).catch(()=>{});
+                              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: importedData.customEqsList||[] }, {merge:true}).catch(()=>{});
+                          }
+                          showAlert('匯入成功', '資料已經成功還原並同步至雲端！');
+                      } catch (error) {
+                          showAlert('匯入失敗', '檔案格式不正確或讀取失敗。請確認是否為 JSON 檔。');
+                      }
+                  };
+                  reader.readAsText(file);
+              };
+
+              const showConfirm = (title, message, onConfirm, onCancel = null, confirmText = '確認', cancelText = '取消') => {
+                setDialog({ isOpen: true, type: 'confirm', title: safeStr(title), message: safeStr(message), onConfirm, onCancel, confirmText: safeStr(confirmText), cancelText: safeStr(cancelText) });
+              };
+              
+
+              const changeFd = (e) => setFormData(p => { const up={...p, [e.target.name]: e.target.type==='checkbox'?e.target.checked:e.target.value}; if(e.target.name==='startDate') up.endDate=e.target.value; return up; });
+              const changeOv = (e) => setOverrideModal(p => ({...p, data:{...p.data, [e.target.name]: e.target.type==='checkbox'?e.target.checked:e.target.value}}));
+              
+              const toggleAtt = (p, isOv=false) => {
+                  if (isOv) {
+                      setOverrideModal(old => {
+                          const currentAtts = old.data.attendees || [];
+                          return { ...old, data: { ...old.data, attendees: currentAtts.includes(p) ? currentAtts.filter(x => x !== p) : [...currentAtts, p] } };
+                      });
+                  } else {
+                      setFormData(old => {
+                          const currentAtts = old.attendees || [];
+                          return { ...old, attendees: currentAtts.includes(p) ? currentAtts.filter(x => x !== p) : [...currentAtts, p] };
+                      });
+                  }
+              };
+
+              const toggleCr = (c, isOv=false) => {
+                  if (isOv) {
+                      setOverrideModal(old => {
+                          const currentCars = old.data.cars || [];
+                          return { ...old, data: { ...old.data, cars: currentCars.includes(c) ? currentCars.filter(x => x !== c) : [...currentCars, c], car: '' } };
+                      });
+                  } else {
+                      setFormData(old => {
+                          const currentCars = old.cars || [];
+                          return { ...old, cars: currentCars.includes(c) ? currentCars.filter(x => x !== c) : [...currentCars, c], car: '' };
+                      });
+                  }
+              };
+
+              const toggleEq = (e, isOv=false) => {
+                  if (isOv) {
+                      setOverrideModal(old => {
+                          const currentEqs = old.data.customEqs || [];
+                          return { ...old, data: { ...old.data, customEqs: currentEqs.includes(e) ? currentEqs.filter(x => x !== e) : [...currentEqs, e] } };
+                      });
+                  } else {
+                          setFormData(old => {
+                          const currentEqs = old.customEqs || [];
+                          return { ...old, customEqs: currentEqs.includes(e) ? currentEqs.filter(x => x !== e) : [...currentEqs, e] };
+                      });
+                  }
+              };
+
+              const deleteTask = async (id) => {
+                setTasks(prev => prev.filter(x => x.id !== id));
+                setSelectedTaskIds(prev => prev.filter(x => x !== id));
+                if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e));
+              };
+
+              const resetFd = () => { setFormData(prev => ({startDate: prev.startDate, endDate: prev.endDate, time: '0900', timeSlot: '自動判定', projectName: '', households: '', itemType: '鑑定', notes: '', eqTheodolite: '', eqLevel: '', attendees: [], cars: [], customEqs: [], groupId: '', status: 'active', cancelReason: ''})); setDailyOverrides({}); setEditingTaskId(null); };
+              
+              const submitSingleOrNew = async (dates, bData) => {
+                const efG = (editingTaskId && formData.groupId) ? formData.groupId : (dates.length>1 ? Date.now().toString()+Math.random().toString(36).substr(2,5) : '');
+                const nT = dates.map((d, i) => { const sd = dailyOverrides[d]||bData; const {startDate, endDate, ...fd}=sd; return {...fd, date:d, groupId:dates.length>1?efG:(editingTaskId?efG:''), id:(i===0&&editingTaskId)?editingTaskId:Date.now().toString()+i}; });
+                
+                setTasks(prev => { const filtered = editingTaskId ? prev.filter(t => t.id !== editingTaskId) : prev; return [...filtered, ...nT]; });
+                logAction(editingTaskId?'更新行程':'新增行程',`${bData.projectName||''} ${dates[0]||''}`); setEditingTaskId(null); setViewDateStr(dates[0]); resetFd();
+
+                if (db && user) { for(const t of nT) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{}); }
+              };
+
+              const handleTaskSubmit = async (e) => {
+                e.preventDefault(); if (!formData.projectName.trim()) return;
+                const dates = getDatesInRange(formData.startDate, formData.endDate); const { startDate, endDate, ...bData } = formData;
+                if (editingTaskId && formData.groupId && tasks.some(t => t.groupId === formData.groupId && t.id !== editingTaskId)) {
+                   return showConfirm('連動更新確認', '行程屬「連續群組」。\n[連動更新]：同步更新群組所有行程\n[僅更新當日]：只修改這天', async () => {
+                      setTasks(prev => prev.map(t => t.groupId === formData.groupId ? { ...bData, date: t.date, groupId: formData.groupId, id: t.id } : t));
+                      setViewDateStr(formData.startDate); setEditingTaskId(null); resetFd();
+                      if (db && user) for(const gt of tasks.filter(t=>t.groupId===formData.groupId)) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(gt.id)), {...bData, date:gt.date, groupId:formData.groupId, id:gt.id});
+                   }, () => submitSingleOrNew(dates, bData), '連動更新', '僅更新當日');
+                }
+                submitSingleOrNew(dates, bData);
+              };
+
+              const handleDeleteClick = (task) => {
+                logAction('刪除行程',`${task.projectName||''} (${task.date||''})`);
+                  if (task.groupId) {
+                      const groupTasks = tasks.filter(t => t.groupId === task.groupId).sort((a,b)=>safeStr(a.date).localeCompare(safeStr(b.date)));
+                      setDeleteGroupModal({ isOpen: true, groupId: task.groupId, dates: groupTasks.map(t => ({ id: t.id, date: t.date, selected: true })) });
+                  } else {
+                      showConfirm('刪除確認', `確定要刪除「${task.projectName}」這筆行程嗎？刪除後無法復原。`, () => deleteTask(task.id));
+                  }
+              };
+
+              const execSelectiveDelete = async () => {
+                  const idsToDelete = deleteGroupModal.dates.filter(d => d.selected).map(d => d.id);
+                  setTasks(prev => prev.filter(x => !idsToDelete.includes(x.id)));
+                  setSelectedTaskIds(prev => prev.filter(x => !idsToDelete.includes(x)));
+                  setDeleteGroupModal({ isOpen: false, groupId: null, dates: [] });
+
+                  if (db && user) {
+                      for (const id of idsToDelete) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
+                  }
+              };
+
+
+              const handleBatchDelete = () => {
+                  showConfirm('確認批次刪除', `確定要刪除這 ${selectedTaskIds.length} 筆行程嗎？刪除後無法復原。`, async () => {
+                      setTasks(prev => prev.filter(x => !selectedTaskIds.includes(x.id)));
+                      if (db && user) {
+                          for (const id of selectedTaskIds) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
+                      }
+                      setSelectedTaskIds([]);
+                  });
+              };
+
+              const handleBatchSubmit = async () => {
+                  setTasks(prev => prev.map(t => selectedTaskIds.includes(t.id) ? { ...t, ...batchData, car: '' } : t));
+                  if (db && user) {
+                      for (const id of selectedTaskIds) {
+                          const t = tasks.find(x => x.id === id);
+                          if (t) {
+                              const updated = { ...t, ...batchData, car: '' };
+                              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id)), updated).catch(e=>console.error(e));
+                          }
+                      }
+                  }
+                  setSelectedTaskIds([]); setShowBatchModal(false); setBatchData(initialBatchData);
+              };
+
+              const toggleSelectTask = (id) => {
+                  setSelectedTaskIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+              };
+
+              const editTask = (task) => {
+                setActiveTab('task');
+                const { date, ...restTask } = task;
+                setFormData({ timeSlot: '自動判定', status: 'active', cancelReason: '', ...restTask, startDate: date, endDate: date });
+                setEditingTaskId(task.id); setDailyOverrides({});
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              };
+
+              const copyTask = (task) => {
+                setActiveTab('task');
+                const { id, date, groupId, ...restTask } = task;
+                setFormData({ timeSlot: '自動判定', status: 'active', cancelReason: '', ...restTask, startDate: date, endDate: date, groupId: '' });
+                setEditingTaskId(null); setDailyOverrides({});
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              };
+
+              const handleLeaveSubmit = async (e) => {
+                e.preventDefault();
+                if (!leaveFormData.person) return;
+                if(!isSuperAdmin&&leaveFormData.person!==currentAccount?.displayName)return;
+                const _isEditLeave=!!editingLeaveId;
+
+                const dates = getDatesInRange(leaveFormData.startDate, leaveFormData.endDate);
+                const { startDate, endDate, ...restData } = leaveFormData;
+
+                const newLeaves = dates.map((d, idx) => ({ ...restData, date: d, id: (idx === 0 && editingLeaveId) ? editingLeaveId : Date.now().toString() + idx }));
+                setLeaves(prev => { const filtered = editingLeaveId ? prev.filter(l => l.id !== editingLeaveId) : prev; return [...filtered, ...newLeaves]; });
+                logAction(_isEditLeave?'更新請假':'新增請假',`${leaveFormData.person} ${leaveFormData.startDate}`); setEditingLeaveId(null); setViewDateStr(dates[0]);
+                setLeaveFormData(prev => ({ ...prev, person: '', leaveType: '全天', leaveCategory: '特休', leaveNotes: '' }));
+
+                if (db && user) {
+                    for (const l of newLeaves) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(e=>console.error(e)); }
+                }
+              };
+
+              const deleteLeave = async (id) => {
+                showConfirm('刪除確認', `確定要刪除該請假紀錄嗎？`, async () => {
+                  const target=leaves.find(l=>l.id===id);
+                  if(target)logAction('刪除請假',`${target.person} ${target.date||target.startDate||''} 請假`);
+                  setLeaves(prev => prev.filter(l => l.id !== id));
+                  if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(id))).catch(e=>console.error(e));
+                });
+              };
+
+              const editLeave = (leave) => {
+                setActiveTab('leave');
+                const { date, ...restLeave } = leave;
+                setLeaveFormData({ leaveCategory: '特休', leaveNotes: '', ...restLeave, startDate: date || todayStr, endDate: date || todayStr });
+                setEditingLeaveId(leave.id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              };
+
+              const addEmp = async () => {
+                  const name = newEmp.n.trim(); if (!name || personnel.includes(name)) return;
+                  const nPs = [...personnel, name]; const nMs = newEmp.job === 'manager' ? [...managers, name] : managers; const nIs = newEmp.job === 'indoor' ? [...indoors, name] : indoors;
+                  setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
+
+                  if (db && user) {
+                      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
+                  }
+                  setNewEmp({ n: '', job: 'field' });
+              };
+
+              const delEmp = async (n) => {
+                  showConfirm("刪除人員", `確定移除 ${n} 嗎？`, async () => {
+                      const nPs = personnel.filter(p => p !== n); const nMs = managers.filter(p => p !== n); const nIs = indoors.filter(p => p !== n);
+                      setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
+
+                      if (db && user) {
+                          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
+                      }
+                  });
+              };
+
+              const updateShortName = async (person, newShortName) => {
+                  const updatedShortNames = { ...shortNames, [person]: newShortName };
+                  setShortNames(updatedShortNames);
+                  if (db && user) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { shortNames: updatedShortNames }, { merge: true }).catch(e=>console.error(e)); }
+              };
+
+              const getPrintName = (fullName) => {
+                  if (!fullName) return '';
+                  const fn = safeStr(fullName);
+                  if (shortNames && shortNames[fn]) return safeStr(shortNames[fn]);
+                  return fn.length >= 2 ? fn.slice(-1) : fn;
+              };
+
+              const handleAddCar = async () => {
+                if (newCarName.trim() && !cars.includes(newCarName.trim())) {
+                  const addedCarName = newCarName.trim();
+                  const newCars = [...cars, addedCarName];
+                  setCars(newCars);
+                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                  setNewCarName('');
+                }
+              };
+
+              const handleDeleteCar = async (carToDelete) => {
+                const newCars = cars.filter(c => c !== carToDelete);
+                setCars(newCars);
+                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                if (formData.car === carToDelete) setFormData(prev => ({ ...prev, car: '' }));
+                if ((formData.cars || []).includes(carToDelete)) setFormData(prev => ({ ...prev, cars: (prev.cars || []).filter(c => c !== carToDelete) }));
+              };
+
+              const handleAddEq = async () => {
+                const name = newEqName.trim(); const category = newEqCat.trim() || '其他';
+                if (name && !customEqsList.some(eq => eq && safeStr(eq.name) === name)) {
+                  const newEqs = [...customEqsList, { name, category }];
+                  setCustomEqsList(newEqs);
+                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                  setNewEqName(''); setNewEqCat(''); 
+                }
+              };
+
+              const handleDeleteEq = async (eqNameToDelete) => {
+                const newEqs = customEqsList.filter(e => e && safeStr(e.name) !== eqNameToDelete);
+                setCustomEqsList(newEqs);
+                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                if ((formData.customEqs || []).includes(eqNameToDelete)) setFormData(prev => ({ ...prev, customEqs: (prev.customEqs || []).filter(e => e !== eqNameToDelete) }));
+              };
+
+              const groupedCustomEqs = useMemo(() => {
+                const groups = {};
+                customEqsList.forEach(eq => {
+                  if (!eq || !eq.name) return; 
+                  const catStr = safeStr(eq.category); const nameStr = safeStr(eq.name);
+                  if (!groups[catStr]) groups[catStr] = [];
+                  groups[catStr].push(nameStr); 
+                });
+                return groups;
+              }, [customEqsList]);
+
+              const availableCategoriesForDatalist = useMemo(() => {
+                const defaults = ['監測', '漏水', '其他', '航測', '檢測'];
+                const currentCats = Object.keys(groupedCustomEqs);
+                return Array.from(new Set([...defaults, ...currentCats]));
+              }, [groupedCustomEqs]);
+
+              const allEqCategories = useMemo(() => {
+                return Array.from(new Set([...Object.keys(EQ_GROUPS), ...Object.keys(groupedCustomEqs)]));
+              }, [groupedCustomEqs]);
+
+              const viewWeekDates = useMemo(() => {
+                const dates = [];
+                const monday = getMonday(viewDateStr);
+                for(let i=0; i<7; i++) {
+                  const d = new Date(monday); d.setDate(d.getDate() + i); dates.push(formatDateStr(d));
+                }
+                return dates;
+              }, [viewDateStr]);
+
+              const scheduleByDate = useMemo(() => {
+                const grouped = {};
+                const mondayStr = viewWeekDates[0];
+                const sundayStr = viewWeekDates[6];
+
+                let allDatesInWeek = [...new Set([...tasks.map(t => safeStr(t.date)), ...leaves.map(l => safeStr(l.date))])]
+                  .filter(d => d && d >= mondayStr && d <= sundayStr).sort();
+                
+                if (searchQuery.trim()) {
+                  allDatesInWeek = [...new Set([...tasks.map(t => safeStr(t.date)), ...leaves.map(l => safeStr(l.date))])].filter(Boolean).sort().reverse();
+                }
+
+                allDatesInWeek.forEach(date => {
+                  let dayTasks = tasks.filter(t => safeStr(t.date) === date);
+                  let dayLeaves = leaves.filter(l => safeStr(l.date) === date);
+
+                  if (searchQuery.trim()) {
+                    const q = searchQuery.toLowerCase();
+                    dayTasks = dayTasks.filter(t => safeStr(t.projectName).toLowerCase().includes(q) || (t.attendees || []).some(a => safeStr(a).toLowerCase().includes(q)) || safeStr(t.notes).toLowerCase().includes(q) || safeStr(t.itemType).toLowerCase().includes(q));
+                    dayLeaves = dayLeaves.filter(l => safeStr(l.person).toLowerCase().includes(q) || safeStr(l.leaveCategory).toLowerCase().includes(q) || safeStr(l.leaveNotes).toLowerCase().includes(q));
+                  }
+
+                  if (searchQuery.trim() && dayTasks.length === 0 && dayLeaves.length === 0) return;
+                  
+                  let assignedPeople = new Set();
+                  dayTasks.forEach(t => { if (t.status !== 'cancelled') { (t.attendees || []).forEach(p => assignedPeople.add(safeStr(p))); } });
+                  let leavePeople = new Set();
+                  dayLeaves.forEach(l => leavePeople.add(safeStr(l.person)));
+                  
+                  const internalStaff = personnel.filter(p => !assignedPeople.has(p) && !leavePeople.has(p));
+                  grouped[date] = { tasks: dayTasks.sort((a, b) => safeStr(a.time).localeCompare(safeStr(b.time))), leaves: dayLeaves, internalStaff: internalStaff };
+                });
+                return grouped;
+              }, [tasks, leaves, personnel, viewWeekDates, searchQuery]);
+
+              const calendarDays = useMemo(() => {
+                const d = new Date(viewDateStr);
+                const y = d.getFullYear(); const m = d.getMonth();
+                const firstDay = new Date(y, m, 1); const lastDay = new Date(y, m + 1, 0);
+                const days = [];
+                const startWeekday = firstDay.getDay(); 
+                for(let i = 0; i < startWeekday; i++) days.push({ date: formatDateStr(new Date(y, m, 1 - startWeekday + i)), currentMonth: false });
+                for(let i = 1; i <= lastDay.getDate(); i++) days.push({ date: formatDateStr(new Date(y, m, i)), currentMonth: true });
+                const remaining = 42 - days.length; 
+                for(let i = 1; i <= remaining; i++) days.push({ date: formatDateStr(new Date(y, m + 1, i)), currentMonth: false });
+                return days;
+              }, [viewDateStr]);
+
+              const calendarWeeks = useMemo(() => {
+                const weeks = [];
+                for (let i = 0; i < calendarDays.length; i += 7) weeks.push(calendarDays.slice(i, i + 7));
+                return weeks;
+              }, [calendarDays]);
+
+              const fieldEngineers = useMemo(() => personnel.filter(p => !managers.includes(p) && !indoors.includes(p)), [personnel, managers, indoors]);
+
+              const maxAttendees = useMemo(() => {
+                let max = 4; 
+                Object.values(scheduleByDate).forEach(dayData => {
+                  dayData.tasks.forEach(task => { if (task.attendees && task.attendees.length > max) max = task.attendees.length; });
+                });
+                return max;
+              }, [scheduleByDate]);
+
+              const getAvailableFieldCount = (dateStr) => {
+                const dayTasks = tasks.filter(t => safeStr(t.date) === dateStr && t.status !== 'cancelled');
+                const dayLeaves = leaves.filter(l => safeStr(l.date) === dateStr);
+                const busy = new Set();
+                dayTasks.forEach(t => (t.attendees || []).forEach(p => { if (fieldEngineers.includes(safeStr(p))) busy.add(safeStr(p)); }));
+                dayLeaves.forEach(l => { if (fieldEngineers.includes(safeStr(l.person))) busy.add(safeStr(l.person)); });
+                const available = fieldEngineers.length - busy.size - 2; 
+                return available > 0 ? available : 0;
+              };
+
+              const getBusyDataForDate = (dateToCalculate) => {
+                  const status = { staff: {}, cars: [], customEqs: [], eqs: { theodolites: [], levels: [], booleans: {} } };
+                  personnel.forEach(p => status.staff[p] = { morning: false, afternoon: false });
+                  if (!dateToCalculate) return status;
+
+                  const dayTasks = tasks.filter(t => safeStr(t.date) === dateToCalculate && t.id !== editingTaskId && t.status !== 'cancelled');
+                  dayTasks.forEach(t => {
+                      let isMorning = false; let isAfternoon = false;
+                      if (t.timeSlot === '全天') { isMorning = true; isAfternoon = true; }
+                      else if (t.timeSlot === '上半天') { isMorning = true; }
+                      else if (t.timeSlot === '下半天') { isAfternoon = true; }
+                      else {
+                          const cleanStr = safeStr(t.time).replace(/[^0-9]/g, '');
+                          if (cleanStr.length > 0) {
+                              if (parseInt(cleanStr, 10) < 1200) isMorning = true;
+                              else isAfternoon = true;
+                          } else isMorning = true;
+                      }
+                      (t.attendees || []).forEach(p => {
+                          const pStr = safeStr(p);
+                          if (status.staff[pStr]) {
+                              if (isMorning) status.staff[pStr].morning = true;
+                              if (isAfternoon) status.staff[pStr].afternoon = true;
+                          }
+                      });
+                      if (t.cars && Array.isArray(t.cars)) t.cars.forEach(c => status.cars.push(safeStr(c)));
+                      else if (t.car) status.cars.push(safeStr(t.car)); 
+
+                      (t.customEqs || []).forEach(eq => status.customEqs.push(safeStr(eq)));
+                      if (t.eqTheodolite) status.eqs.theodolites.push(safeStr(t.eqTheodolite));
+                      if (t.eqLevel) status.eqs.levels.push(safeStr(t.eqLevel));
+                      
+                      Object.values(EQ_KEY_MAP).forEach(key => { if (t[key]) status.eqs.booleans[key] = true; });
+                  });
+                  return status;
+              };
+
+              const busyDataForForm = useMemo(() => getBusyDataForDate(formData.startDate), [formData.startDate, tasks, editingTaskId, personnel]);
+              const busyDataForOverride = useMemo(() => getBusyDataForDate(overrideModal.date), [overrideModal.date, tasks, editingTaskId, personnel]);
+
+              const getExtraEquipments = (task) => {
+                const extras = [];
+                if (task?.hasInclinometer) extras.push('傾度盤');
+                if (task?.hasTiltTube) extras.push('傾斜管');
+                if (task?.hasStrainGauge) extras.push('應變計');
+                if (task?.hasWaterLevel) extras.push('水位觀測器');
+                if (task?.hasThermal) extras.push('熱像儀');
+                if (task?.hasMoistureMeter) extras.push('水分計');
+                if (task?.hasEndoscope) extras.push('內視鏡');
+                if (task?.hasStethoscope) extras.push('聽診器');
+                if (task?.hasPipeLocator) extras.push('管線探測器');
+                if (task?.hasGPR) extras.push('透地雷達');
+                if (task?.hasOdometer) extras.push('輪距儀');
+                if (task?.customEqs && Array.isArray(task.customEqs)) { extras.push(...task.customEqs.map(safeStr)); }
+                return extras;
+              };
+
+              const formatTimeDisplay = (time, slot) => {
+                const t = safeStr(time);
+                if (slot === '全天') return `${t}(全)`;
+                if (slot === '上半天') return `${t}(早)`;
+                if (slot === '下半天') return `${t}(午)`;
+                return t;
+              };
+
+              const goToPrev = () => {
+                const d = new Date(viewDateStr);
+                if (viewMode === 'week') d.setDate(d.getDate() - 7); else d.setMonth(d.getMonth() - 1);
+                setViewDateStr(formatDateStr(d));
+              };
+              const goToNext = () => {
+                const d = new Date(viewDateStr);
+                if (viewMode === 'week') d.setDate(d.getDate() + 7); else d.setMonth(d.getMonth() + 1);
+                setViewDateStr(formatDateStr(d));
+              };
+              const goToToday = () => { setViewDateStr(formatDateStr(new Date())); setSearchQuery(''); };
+
+              const saveOverride = () => {
+                setDailyOverrides(prev => ({ ...prev, [overrideModal.date]: overrideModal.data }));
+                setOverrideModal({ isOpen: false, date: null, data: null });
+              };
+
+              const attendanceStats = useMemo(() => {
+                const stats = {};
+                personnel.forEach(p => { stats[p] = { prevWeekDays: new Set(), thisWeekDays: new Set(), thisMonthDays: new Set(), thisYearDays: new Set(), leaveThisMonth: 0, leaveThisYear: 0 }; });
+                
+                const refYearStr = viewDateStr.substring(0, 4);
+                const refMonthStr = viewDateStr.substring(0, 7);
+                const monday = getMonday(viewDateStr);
+                const thisMonday = new Date(monday);
+                const thisSunday = new Date(thisMonday); thisSunday.setDate(thisSunday.getDate() + 6);
+                const prevMonday = new Date(thisMonday); prevMonday.setDate(prevMonday.getDate() - 7);
+                const prevSunday = new Date(thisSunday); prevSunday.setDate(prevSunday.getDate() - 7);
+
+                const thisMonStr = formatDateStr(thisMonday); const thisSunStr = formatDateStr(thisSunday);
+                const prevMonStr = formatDateStr(prevMonday); const prevSunStr = formatDateStr(prevSunday);
+
+                tasks.forEach(task => {
+                  if (task.status === 'cancelled') return;
+                  const tDate = safeStr(task.date);
+                  const isThisYear = tDate.startsWith(refYearStr);
+                  const isThisMonth = tDate.startsWith(refMonthStr);
+                  const isThisWeek = tDate >= thisMonStr && tDate <= thisSunStr;
+                  const isPrevWeek = tDate >= prevMonStr && tDate <= prevSunStr;
+
+                  (task.attendees || []).forEach(p => {
+                    const pStr = safeStr(p);
+                    if (stats[pStr]) {
+                        if (isThisYear) stats[pStr].thisYearDays.add(tDate);
+                        if (isThisMonth) stats[pStr].thisMonthDays.add(tDate);
+                        if (isThisWeek) stats[pStr].thisWeekDays.add(tDate);
+                        if (isPrevWeek) stats[pStr].prevWeekDays.add(tDate);
+                    }
+                  });
+                });
+
+                leaves.forEach(l => {
+                  const lDate = safeStr(l.date);
+                  const leaveDays = l.leaveType === '全天' ? 1 : 0.5;
+                  const p = safeStr(l.person);
+                  if (p && stats[p]) {
+                      if (lDate.startsWith(refYearStr)) stats[p].leaveThisYear += leaveDays;
+                      if (lDate.startsWith(refMonthStr)) stats[p].leaveThisMonth += leaveDays;
+                  }
+                });
+
+                return stats;
+              }, [tasks, leaves, personnel, viewDateStr]);
+
+              const exportStatsCSV = () => {
+                const d = new Date(viewDateStr);
+                const year = d.getFullYear() - 1911;
+                const month = d.getMonth() + 1;
+                const filename = `${year}年${month}月_出勤與請假統計報表.csv`;
+
+                let csvContent = "\uFEFF"; 
+                csvContent += "人員,職務,狀態,上週出勤(天),當週出勤(天),當月出勤(天),當月請假(天),當年出勤(天),當年請假(天)\n";
+
+                const sortedData = Object.entries(attendanceStats).sort((a, b) => {
+                   const indexA = CUSTOM_SORT_ORDER.indexOf(a[0]);
+                   const indexB = CUSTOM_SORT_ORDER.indexOf(b[0]);
+                   return (indexA !== -1 ? indexA : 999) - (indexB !== -1 ? indexB : 999);
+                });
+
+                sortedData.forEach(([person, s]) => {
+                   const isDeleted = !personnel.includes(person);
+                   const pr = managers.includes(person) ? '主管' : (indoors.includes(person) ? '內業' : '工程師');
+                   const statusText = isDeleted ? '已離職/移除' : '在職';
+                   csvContent += `${person},${pr},${statusText},${s.prevWeekDays.size},${s.thisWeekDays.size},${s.thisMonthDays.size},${s.leaveThisMonth},${s.thisYearDays.size},${s.leaveThisYear}\n`;
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", filename);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              };
+
+              const renderFormContent = (currentData, changeHandler, attToggle, carToggle, cEqToggle, busyData, isOverrideMode) => {
+                return (
+                  <div className="space-y-4 flex flex-col">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <p className="font-black text-slate-700 mb-2 flex items-center gap-1.5 text-base"><SvgIcon name="wrench" className="w-5 h-5 text-slate-500" />攜帶儀器</p>
+                      <div className="grid grid-cols-2 gap-4 mb-3">
+                        {['eqTheodolite','eqLevel'].map(k => (
+                          <div key={k}>
+                            <label className="flex justify-between text-sm font-bold text-gray-600 mb-1">{k==='eqTheodolite'?'經緯儀':'水準儀'} {currentData[k] && (busyData?.eqs?.[k==='eqTheodolite'?'theodolites':'levels']||[]).includes(currentData[k]) && <span className="text-red-500 font-bold flex items-center gap-0.5"><SvgIcon name="alert" className="w-3 h-3" />已排</span>}</label>
+                            <input type="text" name={k} value={currentData[k]||''} onChange={changeHandler} placeholder="輸入數字" className={`w-full border-2 rounded-lg p-2 font-black text-center text-base outline-none ${currentData[k] && (busyData?.eqs?.[k==='eqTheodolite'?'theodolites':'levels']||[]).includes(currentData[k]) ? 'border-red-500 bg-red-50 text-red-700' : 'focus:border-blue-500'}`} />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="space-y-3 pt-3 border-t border-slate-200">
+                        {allEqCategories.map(cat => {
+                            const stdEqs = EQ_GROUPS[cat] || [];
+                            const cEqs = customEqsList.filter(e=>e.category===cat).map(e=>e.name);
+                            const mEqs = [...stdEqs, ...cEqs];
+                            if(!mEqs.length) return null;
+
+                            return (
+                            <div key={cat}>
+                              <span className="bg-slate-200 text-slate-700 text-sm font-black px-2.5 py-1 rounded block mb-2 w-max">{cat}</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {mEqs.map(e => {
+                                    const isCustom = !EQ_KEY_MAP[e];
+                                    const key = EQ_KEY_MAP[e];
+                                    const isChecked = isCustom ? (currentData?.customEqs || []).includes(e) : currentData[key];
+                                    const isBusy = isCustom ? (busyData?.customEqs || []).includes(e) : !!(busyData?.eqs?.booleans?.[key]);
+                                    const hasConflict = isChecked && isBusy;
+
+                                    return (
+                                        <label key={e} className={`flex items-center gap-1.5 text-base font-bold cursor-pointer px-3 py-1.5 rounded-lg border shadow-sm ${hasConflict ? 'bg-red-500 text-white border-red-600' : isChecked ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-100'}`}>
+                                            <input type="checkbox" checked={isChecked || false} onChange={() => {
+                                                if (isCustom) cEqToggle(e, isOverrideMode);
+                                                else changeHandler({target:{name: key, type:'checkbox', checked:!isChecked}});
+                                            }} className="hidden" />
+                                            {e}
+                                            {isBusy && <span className={`text-[11px] font-bold ${isChecked ? 'text-white' : 'text-red-500'} flex items-center gap-0.5`}><SvgIcon name="alert" className="w-3 h-3" />已排</span>}
+                                        </label>
+                                    )
+                                })}
+                              </div>
+                            </div>
+                            );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="bg-green-50 p-4 rounded-xl border border-green-200">
+                      <p className="font-black text-green-800 mb-2 flex items-center gap-1.5 text-base"><SvgIcon name="car" className="w-5 h-5 text-green-600" />派車</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {cars.filter(c=>c).map(c=>{
+                          const isChecked = (currentData?.cars || []).includes(c);
+                          const isBusy = (busyData?.cars || []).includes(c);
+                          const hasConflict = isChecked && isBusy;
+                          return (
+                            <button type="button" key={c} onClick={()=>carToggle(c, isOverrideMode)} className={`px-3 py-1.5 rounded-md text-sm font-bold border shadow-sm transition-all flex items-center gap-1.5 ${hasConflict ? 'bg-red-500 text-white border-red-600' : isChecked ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-100'}`}>
+                              {c}
+                              {isBusy && <span className={`text-[10px] ${isChecked ? 'text-white' : 'text-red-500'} flex items-center gap-0.5`}><SvgIcon name="alert" className="w-3 h-3" />已排</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    
+                    <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 shadow-sm mt-3 flex-1 flex flex-col">
+                      <div className="flex flex-col gap-2 mb-2">
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-base font-black text-blue-900 flex items-center gap-1.5"><SvgIcon name="users" className="w-5 h-5 text-blue-600" />出勤人員</h3>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-[11px] font-bold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-300">空閒</span>
+                          <span className="text-[11px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-300">半日滿</span>
+                          <span className="text-[11px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded border border-orange-300">全日滿</span>
+                          <span className="text-[11px] font-bold bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-300">請假</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {personnel.map(p => {
+                          const isSelected = (currentData?.attendees || []).includes(p);
+                          const targetDate = isOverrideMode ? overrideModal.date : formData.startDate;
+                          const isOnLeave = leaves.some(l => safeStr(l?.date) === targetDate && safeStr(l?.person) === p);
+                          const status = busyData?.staff?.[p] || { morning: false, afternoon: false };
+                          const isFullBusy = status.morning && status.afternoon;
+                          const isPartialBusy = status.morning || status.afternoon;
+                          
+                          let btnClass = ''; let slotText = '';
+                          if (isSelected) { 
+                            btnClass = 'bg-blue-600 text-white border-blue-600 shadow-md'; 
+                          } else if (isOnLeave) { 
+                            btnClass = 'bg-red-50 text-red-600 border-red-300 opacity-90'; slotText = '假'; 
+                          } else if (isFullBusy) { 
+                            btnClass = 'bg-orange-50 text-orange-700 border-orange-400'; slotText = '滿'; 
+                          } else if (isPartialBusy) { 
+                            btnClass = 'bg-amber-50 text-amber-700 border-amber-400'; slotText = status.morning ? '早' : '午'; 
+                          } else { 
+                            btnClass = 'bg-emerald-50 text-emerald-700 border-emerald-400 hover:bg-emerald-100'; 
+                          }
+                          
+                          return (
+                            <button type="button" key={p} onClick={() => attToggle(p, isOverrideMode)} className={`px-3 py-1.5 rounded-md transition-all flex items-center gap-1 border text-sm font-bold ${btnClass}`}>
+                              <span>{p}</span>
+                              {slotText && <span className="text-xs opacity-80 font-bold">({slotText})</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
+              // --- 💡 獨立出列印排版組件，供預覽及實際列印共用 ---
+              const PrintLayout = () => {
+                const _yr=new Date(viewDateStr).getFullYear()-1911;
+                const _mo=new Date(viewDateStr).getMonth()+1;
+                if(viewMode==='month') return (
+                  <div style={{width:'100%',height:'197mm',display:'flex',flexDirection:'column',fontFamily:'sans-serif',color:'#000',boxSizing:'border-box',WebkitPrintColorAdjust:'exact',colorAdjust:'exact'}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,marginBottom:'2px'}}>
+                      <div style={{flex:1}}></div>
+                      <h2 style={{textAlign:'center',fontWeight:900,fontSize:'13px',margin:0,flex:2}}>{_yr}年{_mo}月 外業行程總覽</h2>
+                      <div style={{flex:1,textAlign:'right',fontSize:'8px',color:'#9ca3af'}}>最後更新：{(()=>{try{const l=JSON.parse(localStorage.getItem('__editlogs')||'[]');return l[0]?l[0].time:'';}catch(e){return '';}})()}</div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',flex:1,border:'2px solid #000',minHeight:0}}>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',borderBottom:'2px solid #000',backgroundColor:'#E5E7EB',flexShrink:0}}>
+                        {['日','一','二','三','四','五','六'].map(d=>(<div key={d} style={{textAlign:'center',padding:'1px',fontWeight:900,fontSize:'11px',borderRight:'1px solid #000'}}>{d}</div>))}
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0}}>
+                        {calendarWeeks.map((w,wIdx)=>(
+                          <div key={wIdx} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',borderBottom:'1px solid #000',flex:1,minHeight:0}}>
+                            {w.map((day,dIdx)=>{
+                              const dt=tasks.filter(t=>t.date===day.date&&t.status!=='cancelled');
+                              const dl=leaves.filter(lv=>lv.date===day.date);
+                              const av=getAvailableFieldCount(day.date);
+                              return (
+                                <div key={dIdx} style={{borderRight:'1px solid #000',padding:'1px 2px',backgroundColor:day.currentMonth?'#fff':'#f5f5f5',display:'flex',flexDirection:'column',overflow:'hidden',minHeight:0}}>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexShrink:0}}>
+                                    <span style={{fontWeight:900,fontSize:'12px',lineHeight:1,color:day.currentMonth?'#000':'#aaa'}}>{day.date?parseInt(day.date.split('-')[2],10):''}</span>
+                                    <div style={{textAlign:'right',lineHeight:1}}>
+                                      {holidays[day.date]&&<div style={{fontSize:'8px',color:'#dc2626',fontWeight:'bold'}}>{holidays[day.date]}</div>}
+                                      <div style={{fontSize:'8px',color:av>=3?'#059669':av>0?'#d97706':'#dc2626',fontWeight:'bold'}}>派{av}</div>
+                                    </div>
+                                  </div>
+                                  <div style={{flex:1,overflow:'hidden',minHeight:0}}>
+                                    {dl.map((lv,i)=>(
+                                      <div key={i} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#b91c1c',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>[假]{getPrintName(lv.person)}{lv.leaveType!=='全天'?`(${lv.leaveType})`:''}</div>
+                                    ))}
+                                    {dt.map(t=>(
+                                      <div key={t.id} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#000',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{formatTimeDisplay(t.time,t.timeSlot)} {safeStr(t.projectName)}</div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                );
+                return (
+                  <div className="w-full font-sans text-black">
+                          <div className="w-full">
+                              <h2 className="text-xl font-black text-center mb-2 whitespace-nowrap" style={{whiteSpace: 'nowrap'}}>外業行程安排 ({formatMinguo(viewWeekDates[0])} ~ {formatMinguo(viewWeekDates[6])})</h2>
+                              <table className="ptb w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px'}} cellPadding="4">
+                                  <thead className="bg-gray-200">
+                                      <tr>
+                                          <th className="w-[85px] text-base">日期</th>
+                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FBCFE8' }}>經緯</th>
+                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FEF08A' }}>水準</th>
+                                          <th className="text-left px-2 text-base">案名與工作項目</th>
+                                          <th className="text-base" colSpan={maxAttendees}>出勤人員</th>
+                                          <th className="w-[35px] text-xs">出勤<br/>人數</th>
+                                          <th className="w-[55px] text-base">時間</th>
+                                          <th className="w-[80px] text-base">車輛</th>
+                                      </tr>
+                                  </thead>
+                                  <tbody>
+                                      {Object.keys(scheduleByDate).length === 0 && (
+                                        <tr><td colSpan={8 + maxAttendees} className="px-4 py-8 text-gray-500 italic text-center font-bold text-xl">該週尚無排班與請假紀錄</td></tr>
+                                      )}
+                                      {Object.entries(scheduleByDate).map(([date, data]) => {
+                                          const shortD = `${parseInt(date.split('-')[1],10)}/${parseInt(date.split('-')[2],10)}(${getDayOfWeek(date)})`;
+                                          const pIn = data.internalStaff.filter(p=>!managers.includes(p));
+                                          const pMa = managers.filter(m=>m!=='雅淳');
+                                          return (
+                                              <Fragment key={date}>
+                                                  <tr className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}>
+                                                      <td className="font-black text-base whitespace-nowrap">{shortD}</td>
+                                                      <td colSpan={7+maxAttendees} className="text-left font-black text-red-600 px-2 text-base">
+                                                          {pMa.map(getPrintName).join(' ')} {pIn.map(getPrintName).join(' ')}
+                                                          {holidays[date] && <span className="ml-2">[{holidays[date]}]</span>}
+                                                          {data.leaves.length > 0 && <span className="ml-4">請假名單: {data.leaves.map(l=>`${getPrintName(l.person)}(${l.leaveType})`).join('、')}</span>}
+                                                      </td>
+                                                  </tr>
+                                                  {data.tasks.length===0 && <tr><td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}/><td colSpan={7+maxAttendees} className="text-gray-500 font-bold italic">當日無排班</td></tr>}
+                                                  {data.tasks.map(t => {
+                                                      const ext = getExtraEquipments(t); 
+                                                      const tCars = t.cars && t.cars.length > 0 ? t.cars : (t.car ? [safeStr(t.car)] : []);
+                                                      return (
+                                                      <tr key={t.id} className={t.status==='cancelled'?'text-gray-400':''}>
+                                                          <td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}></td>
+                                                          <td className="font-black text-base" style={t.eqTheodolite ? { backgroundColor: '#FBCFE8' } : {}}>{t.eqTheodolite||''}</td>
+                                                          <td className="font-black text-base" style={t.eqLevel ? { backgroundColor: '#FEF08A' } : {}}>{t.eqLevel||''}</td>
+                                                          <td className="text-left font-bold px-2 text-base">
+                                                              <span className={t.status==='cancelled'?'line-through':''}>{safeStr(t.projectName)} {t.households?`(${t.households}戶)`:''} {t.itemType}</span>
+                                                              {ext.length>0 && <span className="text-blue-600 font-bold" style={{ color: '#2563EB' }}> [{ext.join('、')}]</span>}
+                                                              {t.notes && <span className="text-blue-900 font-bold ml-2 text-sm" style={{ color: '#1e3a8a' }}>※ {t.notes}</span>}
+                                                              {t.status==='cancelled' && <div className="text-red-600 text-xs mt-0.5">【已取消：{t.cancelReason}】</div>}
+                                                          </td>
+                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} className="font-black text-base px-1">{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
+                                                          <td className="font-black text-base">{(t.attendees||[]).length||''}</td>
+                                                          <td className="font-black text-lg text-blue-800" style={{ color: '#1E40AF' }}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
+                                                          <td className="font-bold text-sm">{tCars.length>0?tCars.join(','):''}</td>
+                                                      </tr>
+                                                   )})}
+                                              </Fragment>
+                                          )
+                                      })}
+                                  </tbody>
+                              </table>
+                              <div style={{breakBefore:"page",pageBreakBefore:"always",marginTop:0}}>
+                                  <div className="flex justify-between items-start mb-3"><div style={{width:'120px'}}></div><h2 className="text-2xl font-black text-center text-black">外勤次數智慧分析 ({formatMinguo(viewWeekDates[0])} 起)</h2><div style={{width:'120px',textAlign:'right',fontSize:'9px',color:'#9ca3af',paddingTop:'6px'}}>最後更新：{(()=>{try{const l=JSON.parse(localStorage.getItem('__editlogs')||'[]');return l[0]?l[0].time:'';}catch(e){return '';}})()}</div></div>
+                                  <table className="ptb w-full text-base text-black text-center" border={1} cellSpacing="0" cellPadding="4">
+                                      <thead className="bg-gray-200" style={{ backgroundColor: '#E5E7EB' }}>
+                                          <tr><th className="w-[14%] text-lg">人員</th><th className="w-[14%]">上週出勤(天)</th><th className="w-[14%] text-blue-900" style={{ backgroundColor: '#BFDBFE' }}>當週出勤(天)</th><th className="w-[14%]">當月出勤(天)</th><th className="w-[14%] text-red-800" style={{ backgroundColor: '#FEE2E2' }}>當月請假(天)</th><th className="w-[14%]">當年出勤(天)</th><th className="w-[16%] text-purple-900" style={{ backgroundColor: '#F3E8FF' }}>當年請假(天)</th></tr>
+                                      </thead>
+                                      <tbody className="bg-white">
+                                          {Object.entries(attendanceStats).sort((a,b)=>CUSTOM_SORT_ORDER.indexOf(a[0])-CUSTOM_SORT_ORDER.indexOf(b[0])).map(([person, stats]) => {
+                                              if (person === '絃' || !personnel.includes(person)) return null;
+                                              return (
+                                              <tr key={person}>
+                                                  <td className="font-black text-lg">{person} {managers.includes(person) && <span className="text-[10px] text-gray-600 bg-gray-100 px-1 rounded border border-gray-300">(主管)</span>}</td>
+                                                  <td className="font-bold text-gray-700">{stats.prevWeekDays.size > 0 ? stats.prevWeekDays.size : '-'}</td>
+                                                  <td className="font-black text-blue-800 text-xl" style={{ backgroundColor: '#EFF6FF' }}>{stats.thisWeekDays.size > 0 ? stats.thisWeekDays.size : '-'}</td>
+                                                  <td className="font-bold">{stats.thisMonthDays.size > 0 ? stats.thisMonthDays.size : '-'}</td>
+                                                  <td className="text-red-700 font-black text-lg" style={{ backgroundColor: '#FEF2F2' }}>{stats.leaveThisMonth > 0 ? `${stats.leaveThisMonth}天` : '-'}</td>
+                                                  <td className="font-bold">{stats.thisYearDays.size > 0 ? stats.thisYearDays.size : '-'}</td>
+                                                  <td className="text-purple-800 font-black text-lg" style={{ backgroundColor: '#FAF5FF' }}>{stats.leaveThisYear > 0 ? `${stats.leaveThisYear}天` : '-'}</td>
+                                              </tr>
+                                          )})}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                  </div>
+                );
+              }
+
+              const executePrint = () => {
+                const startDate = new Date(viewWeekDates[0]);
+                const endDate = new Date(viewWeekDates[6]);
+                const minguoYear = startDate ? startDate.getFullYear() - 1911 : '';
+                const startStr = startDate ? `${startDate.getMonth() + 1}.${startDate.getDate()}` : '';
+                const endStr = endDate ? `${endDate.getMonth() + 1}.${endDate.getDate()}` : '';
+                let filename = `${minguoYear}.${startStr}-${endStr}外業行程`;
+                
+                if (viewMode === 'month') {
+                    filename = `${new Date(viewDateStr).getFullYear()-1911}年${new Date(viewDateStr).getMonth()+1}月外業行程`;
+                }
+
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = filename;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                } catch (err) {}
+
+                // 動態設定列印方向
+                let _dp=document.getElementById('__dp');
+                if(!_dp){_dp=document.createElement('style');_dp.id='__dp';document.head.appendChild(_dp);}
+                _dp.textContent=viewMode==='month'?'@page{size:A4 landscape;margin:5mm;}':'@page{size:A4 portrait;margin:8mm;}';
+
+                setShowPrintHint(true);
+                
+                // 強制觸發 React 渲染後，再呼叫 print
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        let originalTitle = "";
+                        try {
+                            originalTitle = document.title;
+                            document.title = filename;
+                        } catch(e) {}
+                        
+                        try {
+                            window.print(); 
+                        } catch(e) {
+                            alert("您的瀏覽器攔截了自動列印視窗，請手動按下鍵盤的 Ctrl + P (或 Cmd + P) 進行列印！");
+                        }
+
+                        try {
+                            if (originalTitle) document.title = originalTitle; 
+                        } catch(e) {}
+                        
+                        setShowPrintHint(false);
+                    });
+                });
+              };
+
+              // ==========================================
+              // 佈局結構
+              // ==========================================
+
+              // ===== 帳號操作函數 =====
+              const handleSelectUser = (name) => {
+                const found = getAccounts().find(a => a.username === name);
+                setLoginForm({ username:name, password:'', error:'', isFirst: found ? found.passwordHash===null : false });
+              };
+
+              // 強制修正特定帳號的角色
+              const _FIXED_SUPERADMINS = ['雅淳','世鐘'];
+              const getFixedRole = (displayName, username, role) => {
+                if(_FIXED_SUPERADMINS.includes(displayName)||_FIXED_SUPERADMINS.includes(username)) return 'superadmin';
+                return role;
+              };
+              const doLogin = async () => {
+                const accs = getAccounts();
+                const found = accs.find(a => a.username === loginForm.username);
+                if (!found) { setLoginForm(p=>({...p,error:'請先選擇使用者。'})); return; }
+                if (!loginForm.password) { setLoginForm(p=>({...p,error:'請輸入密碼。'})); return; }
+                const email = toEmail(found.username);
+                if (found.passwordHash === null) {
+                  if (loginForm.password.length < 6) { setLoginForm(p=>({...p,error:'首次登入，請設定至少 6 碼密碼。'})); return; }
+                  try {
+                    let fbUser;
+                    try { const c=await createUserWithEmailAndPassword(auth,email,loginForm.password); fbUser=c.user; }
+                    catch(e) { if(e.code==='auth/email-already-in-use'){const c=await signInWithEmailAndPassword(auth,email,loginForm.password);fbUser=c.user;}else throw e; }
+                    await saveUserRole(fbUser.uid, found.role, found.displayName);
+                    const _fixedR=getFixedRole(found.displayName,found.username,found.role);
+                    const loggedIn={...found,id:fbUser.uid,passwordHash:'set',role:_fixedR,email};
+                    const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
+                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  } catch(err) { setLoginForm(p=>({...p,error:'建立帳號失敗：'+(err.message||err.code)})); }
+                } else {
+                  try {
+                    const c=await signInWithEmailAndPassword(auth,email,loginForm.password);
+                    // 優先用 localStorage 的 role（doUpdateRole 已更新），Firebase 只是備份
+                    const role=getFixedRole(found.displayName,found.username,found.role);
+                    const loggedIn={...found,id:c.user.uid,role,email};
+                    const upd=accs.map(a=>a.username===found.username?{...a,role}:a);
+                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  } catch(err) {
+                    setLoginForm(p=>({...p,error:['auth/invalid-credential','auth/wrong-password'].includes(err.code)?'密碼錯誤。':'登入失敗：'+(err.message||err.code)}));
+                  }
+                }
+              };
+
+              const doLogout = async () => {
+                try { if(auth) await fbSignOut(auth); } catch(e){}
+                clearSession(); setCurrentAccount(null); setLoginPage(true);
+                setLoginForm({username:'',password:'',error:'',isFirst:false});
+              };
+
+              const doAddAccount = async () => {
+                if(!newAccForm.username.trim()||!newAccForm.displayName.trim()||!newAccForm.password){setNewAccError('所有欄位均為必填。');return;}
+                if(newAccForm.password!==newAccForm.confirm){setNewAccError('兩次密碼不一致。');return;}
+                if(newAccForm.password.length<6){setNewAccError('密碼至少 6 碼。');return;}
+                const accs=getAccounts();
+                if(accs.find(a=>a.username===newAccForm.username.trim())){setNewAccError('帳號名稱已存在。');return;}
+                try {
+                  const c=await createUserWithEmailAndPassword(auth,toEmail(newAccForm.username.trim()),newAccForm.password);
+                  await saveUserRole(c.user.uid,newAccForm.role,newAccForm.displayName.trim());
+                  const na={id:c.user.uid,username:newAccForm.username.trim(),displayName:newAccForm.displayName.trim(),role:newAccForm.role,passwordHash:'set',email:toEmail(newAccForm.username.trim()),createdAt:new Date().toISOString()};
+                  const upd=[...accs,na]; saveAccounts(upd); setAccList(upd);
+                  setNewAccForm({username:'',displayName:'',role:'editor',password:'',confirm:''}); setNewAccError(''); setAccMgrTab('list');
+                } catch(err){ setNewAccError(err.code==='auth/email-already-in-use'?'帳號已存在。':'建立失敗：'+(err.message||err.code)); }
+              };
+
+              const doDeleteAccount = async (id) => {
+                if(id===currentAccount?.id){alert('不能刪除自己！');return;}
+                if(db) await setDoc(doc(db,'artifacts',appId,'public','data','userRoles',id),{role:'disabled'},{merge:true}).catch(()=>{});
+                const upd=getAccounts().filter(a=>a.id!==id); saveAccounts(upd); setAccList(upd);
+              };
+
+              const doResetPassword = async (acc) => {
+                if(!window.confirm(`確定要重設「${acc.displayName}」的密碼？\n對方下次登入時可自行設定新密碼。`)) return;
+                const upd=getAccounts().map(a=>a.id===acc.id?{...a,passwordHash:null}:a);
+                saveAccounts(upd); setAccList(upd);
+                logAction('重設密碼',`${acc.displayName}`);
+                showAlert('重設完成',`已重設「${acc.displayName}」的密碼，對方下次登入時可設定新密碼。`);
+              };
+
+              const doUpdateRole = async (acc, newRole) => {
+                if(['雅淳','世鐘'].includes(acc.displayName)||['雅淳','世鐘'].includes(acc.username)){
+                  alert('此帳號為系統固定最高管理員，無法更改角色。');return;
+                }
+                if(acc.id===currentAccount?.id&&newRole!=='superadmin'){alert('不能降低自己的最高管理員權限！');return;}
+                const upd=getAccounts().map(a=>a.id===acc.id?{...a,role:newRole}:a);
+                saveAccounts(upd); setAccList(upd);
+                if(acc.id===currentAccount?.id){const newAcc={...currentAccount,role:newRole};setCurrentAccount(newAcc);saveSession(newAcc);}
+                if(db&&acc.id&&!acc.id.startsWith('u_')) saveUserRole(acc.id,newRole,acc.displayName).catch(()=>{});
+                logAction('角色變更',`${acc.displayName}: ${ROLE_LABELS[acc.role]||acc.role} → ${ROLE_LABELS[newRole]||newRole}`);
+                setEditRoleTarget(null);
+              };
+
+              const moveAccount=(id,dir)=>{
+                const accs=[...accList],idx=accs.findIndex(a=>a.id===id);
+                if(idx<0||(dir==='up'&&idx===0)||(dir==='down'&&idx===accs.length-1))return;
+                const sw=dir==='up'?idx-1:idx+1;[accs[idx],accs[sw]]=[accs[sw],accs[idx]];
+                saveAccounts(accs);setAccList(accs);
+              };
+              // ===== 登入頁面 =====
+              if (loginPage) return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-800 via-blue-900 to-indigo-900 flex items-center justify-center p-4">
+                  <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-8 py-8 text-center">
+                      <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-3"><SvgIcon name="calendar" className="w-8 h-8 text-white" /></div>
+                      <h1 className="text-2xl font-black text-white">外業行程排班系統</h1>
+                      <p className="text-blue-200 text-sm mt-1">請選擇使用者並登入</p>
+                    </div>
+                    <div className="px-8 py-7 space-y-4">
+                      <div>
+                        <label className="block text-xs font-black text-gray-500 mb-1.5 uppercase tracking-widest">選擇使用者</label>
+                        <select value={loginForm.username||''} onChange={e=>handleSelectUser(e.target.value)}
+                          className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-gray-800 outline-none focus:border-blue-500 bg-white">
+                          <option value="">— 請選擇 —</option>
+                          {accList.map(a=>(
+                            <option key={a.id} value={a.username}>{a.displayName}{a.passwordHash===null?'（首次登入）':''}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {loginForm.username && (
+                        <div>
+                          <label className="block text-xs font-black text-gray-500 mb-1.5 uppercase tracking-widest">
+                            {loginForm.isFirst ? '設定您的登入密碼（首次）' : '密碼'}
+                          </label>
+                          {loginForm.isFirst && (
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2 text-xs font-bold text-amber-800">
+                              首次登入！請設定至少 6 碼的專屬密碼，日後以此登入。
+                            </div>
+                          )}
+                          <input type="password" value={loginForm.password}
+                            onChange={e=>setLoginForm(p=>({...p,password:e.target.value,error:''}))}
+                            onKeyDown={e=>e.key==='Enter'&&doLogin()}
+                            className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 font-bold text-gray-800 outline-none focus:border-blue-500"
+                            placeholder={loginForm.isFirst?'設定密碼（至少6碼）':'輸入密碼'} />
+                        </div>
+                      )}
+                      {loginForm.error && (
+                        <div className="bg-red-50 text-red-700 text-sm font-bold px-4 py-2.5 rounded-xl border border-red-200 flex items-center gap-2">
+                          <SvgIcon name="alert" className="w-4 h-4 shrink-0"/>{loginForm.error}
+                        </div>
+                      )}
+                      <button onClick={doLogin} disabled={!loginForm.username}
+                        className={`w-full py-3.5 text-white rounded-xl font-black text-base shadow-md transition-colors ${loginForm.username?'bg-blue-600 hover:bg-blue-700':'bg-gray-300 cursor-not-allowed'}`}>
+                        {loginForm.isFirst?'設定密碼並登入':'登入系統'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+
+              return (
+                <Fragment>
+                  {/* --- Modal 對話框 --- */}
+                  {showAccMgr&&isSuperAdmin&&(<div className="fixed inset-0 bg-black/60 z-[400] flex items-center justify-center p-4 print:hidden"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"><div className="bg-slate-800 px-5 py-4 flex justify-between items-center flex-shrink-0"><h2 className="font-black text-white text-lg">帳號管理</h2><button onClick={()=>setShowAccMgr(false)} className="text-slate-400 hover:text-white"><SvgIcon name="x" className="w-5 h-5"/></button></div><div className="flex border-b flex-shrink-0"><button onClick={()=>setAccMgrTab('list')} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='list'?'bg-white text-blue-700 border-b-2 border-blue-600':'text-gray-500'}`}>帳號列表 ({accList.length})</button><button onClick={()=>{setAccMgrTab('add');setNewAccError('');}} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='add'?'bg-white text-green-700 border-b-2 border-green-600':'text-gray-500'}`}>＋ 新增帳號</button></div><div className="flex-1 overflow-y-auto p-4 space-y-2">{accMgrTab==='list'&&accList.map(acc=>(<div key={acc.id} className="bg-white border rounded-xl p-3 flex items-center gap-2"><div className="flex flex-col"><button onClick={()=>moveAccount(acc.id,'up')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="18 15 12 9 6 15"/></svg></button><button onClick={()=>moveAccount(acc.id,'down')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg></button></div><div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-sm">{(acc.displayName||'?').charAt(0)}</div><div className="flex-1 min-w-0"><div className="font-black text-sm">{acc.displayName}</div><span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${ROLE_COLORS[acc.role]||'bg-gray-100 text-gray-600 border-gray-300'}`}>{ROLE_LABELS[acc.role]||acc.role}</span></div>{acc.id===currentAccount?.id&&<span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-black border">登入中</span>}<div className="flex gap-1"><button onClick={()=>setEditRoleTarget({...acc})} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg border border-blue-200"><SvgIcon name="edit" className="w-3.5 h-3.5"/></button><button onClick={()=>doResetPassword(acc)} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg border border-amber-200"><SvgIcon name="wrench" className="w-3.5 h-3.5"/></button>{acc.id!==currentAccount?.id&&<button onClick={()=>{if(window.confirm('確定刪除「'+acc.displayName+'」?'))doDeleteAccount(acc.id);}} className="p-1.5 text-red-600 bg-red-50 rounded-lg border border-red-200"><SvgIcon name="trash" className="w-3.5 h-3.5"/></button>}</div></div>))}{accMgrTab==='add'&&(<div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><label className="block text-xs font-black text-gray-500 mb-1">帳號名稱</label><input type="text" value={newAccForm.username} onChange={e=>setNewAccForm(p=>({...p,username:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="英文+數字"/></div><div><label className="block text-xs font-black text-gray-500 mb-1">顯示名稱</label><input type="text" value={newAccForm.displayName} onChange={e=>setNewAccForm(p=>({...p,displayName:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="中文姓名"/></div></div><select value={newAccForm.role} onChange={e=>setNewAccForm(p=>({...p,role:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none bg-white"><option value="admin">管理員</option><option value="editor">編輯者</option><option value="viewer">唯讀者</option></select><input type="password" value={newAccForm.password} onChange={e=>setNewAccForm(p=>({...p,password:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="密碼（至少6碼）"/><input type="password" value={newAccForm.confirm} onChange={e=>setNewAccForm(p=>({...p,confirm:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="確認密碼"/>{newAccError&&<div className="bg-red-50 text-red-700 text-sm font-bold px-3 py-2 rounded-xl border border-red-200">{newAccError}</div>}<button onClick={doAddAccount} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-black">建立帳號</button></div>)}</div></div></div>)}
+                  {editRoleTarget&&isSuperAdmin&&(<div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 print:hidden"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"><div className="bg-blue-50 border-b border-blue-200 px-5 py-4 flex justify-between items-center"><h3 className="font-black text-blue-900">編輯角色 — {editRoleTarget.displayName}</h3><button onClick={()=>setEditRoleTarget(null)} className="text-blue-400 p-1"><SvgIcon name="x" className="w-5 h-5"/></button></div><div className="p-5 space-y-3">{[{v:'superadmin',l:'最高管理員',d:'全功能+帳號管理'},{v:'admin',l:'管理員',d:'全功能（除帳號管理）'},{v:'editor',l:'編輯者',d:'排班+請假'},{v:'viewer',l:'唯讀者',d:'僅查看行程、編輯請假'}].map(r=>(<label key={r.v} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer ${editRoleTarget.role===r.v?'border-blue-400 bg-blue-50':'border-gray-200'}`}><input type="radio" name="editRole" value={r.v} checked={editRoleTarget.role===r.v} onChange={()=>setEditRoleTarget(p=>({...p,role:r.v}))} className="w-4 h-4"/><div><div className="font-black text-sm">{r.l}</div><div className="text-xs text-gray-500">{r.d}</div></div></label>))}<button onClick={()=>doUpdateRole(editRoleTarget,editRoleTarget.role)} className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-black">確認更新</button></div></div></div>)}
+
+                  {dialog.isOpen && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[300] flex items-center justify-center p-4 print:hidden">
+                      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className={`p-4 border-b flex items-center gap-2 ${dialog.type==='alert'?'bg-blue-50 text-blue-900':'bg-red-50 text-red-900'}`}><SvgIcon name="alert" className={`w-5 h-5 ${dialog.type === 'alert' ? 'text-blue-600' : 'text-red-600'}`} /><h2 className="font-bold text-lg">[系統提示] {dialog.title}</h2></div>
+                        <div className="p-6 text-gray-700 text-sm leading-relaxed font-medium whitespace-pre-line">{dialog.message}</div>
+                        <div className="p-4 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+                          {dialog.type==='confirm' && <button onClick={()=>{if(dialog.onCancel)dialog.onCancel();setDialog({...dialog,isOpen:false});}} className="px-5 py-2 bg-white border rounded-lg font-bold text-gray-700">取消</button>}
+                          <button onClick={()=>{if(dialog.onConfirm)dialog.onConfirm();setDialog({...dialog,isOpen:false});}} className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold">確認</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedTaskIds.length > 0 && !isViewer && (
+                      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-[100] border border-gray-700 animate-in fade-in zoom-in duration-200 print:hidden">
+                          <span className="font-bold text-blue-400">已選 {selectedTaskIds.length} 筆</span>
+                          <div className="w-px h-6 bg-gray-700 mx-2"></div>
+                          <button onClick={() => setShowBatchModal(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-1.5 rounded-lg font-bold text-sm flex items-center gap-1.5"><SvgIcon name="edit" className="w-4 h-4" /> 批次修改</button>
+                          <button onClick={handleBatchDelete} className="bg-red-600 hover:bg-red-500 px-4 py-1.5 rounded-lg font-bold text-sm flex items-center gap-1.5"><SvgIcon name="trash" className="w-4 h-4" /> 批次刪除</button>
+                          <button onClick={() => setSelectedTaskIds([])} className="text-gray-400 hover:text-white p-1 font-bold"><SvgIcon name="x" className="w-5 h-5" /></button>
+                      </div>
+                  )}
+
+                  {deleteGroupModal.isOpen && (
+                      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 print:hidden">
+                          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
+                              <div className="bg-red-50 p-4 border-b border-red-100 flex justify-between items-center">
+                                  <h2 className="font-bold text-red-900 flex items-center gap-2"><SvgIcon name="trash" className="w-5 h-5" /> 選擇要刪除的日期</h2>
+                                  <button onClick={() => setDeleteGroupModal({ isOpen: false, groupId: null, dates: [] })} className="text-red-900 hover:text-red-700 p-1"><SvgIcon name="x" className="w-5 h-5" /></button>
+                              </div>
+                              <div className="p-4 max-h-60 overflow-y-auto space-y-2">
+                                  {deleteGroupModal.dates.map((d, i) => (
+                                      <label key={d.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+                                          <span className="font-bold text-gray-700">{formatMinguo(d.date)} ({getDayOfWeek(d.date)})</span>
+                                          <input type="checkbox" className="w-5 h-5 rounded cursor-pointer" checked={d.selected} 
+                                                 onChange={() => setDeleteGroupModal(prev => ({ ...prev, dates: prev.dates.map((x,idx)=> idx===i ? {...x, selected: !x.selected} : x) }))} />
+                                      </label>
+                                  ))}
+                              </div>
+                              <div className="p-4 bg-gray-50 flex gap-2">
+                                  <button onClick={() => setDeleteGroupModal({ isOpen: false, groupId: null, dates: [] })} className="flex-1 py-2 border rounded font-bold hover:bg-gray-100">取消</button>
+                                  <button onClick={execSelectiveDelete} className="flex-1 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">確認刪除已勾選項目</button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {showBatchModal && (
+                      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[250] flex items-center justify-center p-4 print:hidden">
+                          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl custom-scrollbar">
+                              <div className="p-5 border-b flex justify-between items-center bg-blue-50">
+                                  <h2 className="font-black text-blue-900 text-lg flex items-center gap-2"><SvgIcon name="edit" className="w-5 h-5" /> 批次修改儀器與人員設定</h2>
+                                  <button onClick={() => { setShowBatchModal(false); setBatchData(initialBatchData); }} className="text-blue-400 hover:text-blue-600 p-1"><SvgIcon name="x" className="w-6 h-6" /></button>
+                              </div>
+                              <div className="p-6 space-y-6">
+                                  <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl text-sm font-bold border border-yellow-200 flex items-start gap-2.5 shadow-sm">
+                                      <SvgIcon name="alert" className="w-5 h-5 shrink-0 mt-0.5" />
+                                      <div>
+                                        <p className="text-base mb-1">警告：此操作將會「直接覆蓋」這 {selectedTaskIds.length} 筆行程的人員、車輛與儀器設定！</p>
+                                        <p className="font-normal text-yellow-700">若有不需要修改的欄位，請維持空白或不勾選。</p>
+                                      </div>
+                                  </div>
+                                  
+                                  <div className="bg-gray-50 p-5 rounded-xl border border-gray-200 shadow-sm">
+                                      <h4 className="font-black mb-4 flex items-center gap-2 text-purple-800"><SvgIcon name="wrench" className="w-5 h-5" /> 統一變更儀器為：</h4>
+                                      <div className="grid grid-cols-2 gap-4 mb-4">
+                                          <div>
+                                              <label className="block text-sm font-bold text-gray-600 mb-1.5">經緯儀編號</label>
+                                              <input type="text" placeholder="輸入編號" value={batchData.eqTheodolite} onChange={e=>setBatchData({...batchData, eqTheodolite: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
+                                          </div>
+                                          <div>
+                                              <label className="block text-sm font-bold text-gray-600 mb-1.5">水準儀編號</label>
+                                              <input type="text" placeholder="輸入編號" value={batchData.eqLevel} onChange={e=>setBatchData({...batchData, eqLevel: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
+                                          </div>
+                                      </div>
+                                      <div className="space-y-4 pt-4 border-t border-gray-200">
+                                        {allEqCategories.map(cat => {
+                                            const stdEqs = EQ_GROUPS[cat] || [];
+                                            const cEqs = customEqsList.filter(e=>e.category===cat).map(e=>e.name);
+                                            const mEqs = [...stdEqs, ...cEqs];
+                                            if(mEqs.length === 0) return null;
+
+                                            return (
+                                            <div key={cat}>
+                                              <span className="inline-block bg-slate-200 text-slate-700 text-sm font-black px-2.5 py-1 rounded mb-2 uppercase tracking-widest">{cat}</span>
+                                              <div className="flex flex-wrap gap-2">
+                                                {mEqs.map(e => {
+                                                    const isCustom = !EQ_KEY_MAP[e];
+                                                    const key = EQ_KEY_MAP[e];
+                                                    
+                                                    return isCustom ? (
+                                                        <label key={e} className="flex items-center gap-1.5 text-sm font-bold cursor-pointer px-3 py-2 rounded-lg transition-colors border hover:bg-gray-200 border-transparent bg-white shadow-sm">
+                                                            <input type="checkbox" checked={(batchData.customEqs || []).includes(e)} onChange={() => setBatchData(prev => ({...prev, customEqs: (prev.customEqs||[]).includes(e) ? (prev.customEqs||[]).filter(x=>x!==e) : [...(prev.customEqs||[]), e]}))} className="w-5 h-5 text-purple-600 rounded cursor-pointer" />
+                                                            {e}
+                                                        </label>
+                                                    ) : (
+                                                        <label key={e} className="flex items-center gap-1.5 text-sm font-bold cursor-pointer px-3 py-2 rounded-lg transition-colors border hover:bg-gray-200 border-transparent bg-white shadow-sm">
+                                                            <input type="checkbox" checked={batchData[key] || false} onChange={ev => setBatchData({...batchData, [key]: ev.target.checked})} className="w-5 h-5 text-purple-600 rounded cursor-pointer" />
+                                                            {e}
+                                                        </label>
+                                                    );
+                                                })}
+                                              </div>
+                                            </div>
+                                            );
+                                        })}
+                                      </div>
+                                  </div>
+                                  
+                                  <div className="bg-blue-50/50 p-5 rounded-xl border border-blue-100 shadow-sm">
+                                      <h4 className="font-black mb-3 flex items-center gap-2 text-blue-800"><SvgIcon name="users" className="w-5 h-5 inline mr-1" /> 統一變更出勤人員為：</h4>
+                                      <div className="flex flex-wrap gap-2">
+                                          {(personnel || []).map(p => (
+                                              <button key={p} type="button" onClick={() => setBatchData(prev => ({ ...prev, attendees: (prev.attendees || []).includes(p) ? (prev.attendees || []).filter(x=>x!==p) : [...(prev.attendees || []), p] }))} 
+                                                      className={`px-4 py-2 rounded-lg border text-sm font-bold shadow-sm transition-all ${(batchData.attendees || []).includes(p) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-gray-300 hover:bg-gray-100 text-gray-700'}`}>{p}</button>
+                                          ))}
+                                      </div>
+                                  </div>
+                                  <div className="bg-green-50 p-5 rounded-xl border border-green-100 shadow-sm">
+                                      <h4 className="font-black mb-3 flex items-center gap-2 text-green-800"><SvgIcon name="car" className="w-5 h-5 inline mr-1" /> 統一變更車輛為：</h4>
+                                      <div className="flex flex-wrap gap-2">
+                                          {(cars || []).filter(c=>c).map(c => (
+                                              <button key={c} type="button" onClick={() => setBatchData(prev => ({ ...prev, cars: (prev.cars || []).includes(c) ? (prev.cars || []).filter(x=>x!==c) : [...(prev.cars || []), c] }))} 
+                                                      className={`px-4 py-2 rounded-lg border text-sm font-bold shadow-sm transition-all ${(batchData.cars || []).includes(c) ? 'bg-green-600 text-white border-green-600' : 'bg-white border-gray-300 hover:bg-gray-100 text-gray-700'}`}>{c}</button>
+                                          ))}
+                                      </div>
+                                  </div>
+                              </div>
+                              <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-3 sticky bottom-0">
+                                  <button onClick={() => { setShowBatchModal(false); setBatchData(initialBatchData); }} className="flex-1 py-3 border border-gray-300 bg-white hover:bg-gray-100 rounded-xl font-bold shadow-sm transition-colors text-gray-700">取消</button>
+                                  <button onClick={handleBatchSubmit} className="flex-[2] py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black shadow-lg transition-colors text-lg">確認覆蓋套用</button>
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {overrideModal.isOpen && (
+                    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6 print:hidden">
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
+                            <div className="p-5 border-b border-indigo-100 flex justify-between items-center bg-indigo-50 flex-shrink-0">
+                                <h2 className="text-xl font-black text-indigo-900 flex items-center gap-2">
+                                    <SvgIcon name="edit" className="w-6 h-6 text-indigo-600" /> 微調 {formatMinguo(overrideModal.date)} ({getDayOfWeek(overrideModal.date)}) 行程設定
+                                </h2>
+                                <button type="button" onClick={() => setOverrideModal({ isOpen: false, date: null, data: null })} className="text-indigo-400 hover:text-indigo-800 p-1"><SvgIcon name="x" className="w-6 h-6" /></button>
+                            </div>
+                            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-white">
+                                <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl mb-6 shadow-sm flex items-center gap-2">
+                                    <SvgIcon name="alert" className="w-5 h-5 text-indigo-500" />
+                                    <p className="text-sm font-bold text-indigo-800">提示：您現在修改的內容，只會套用在 {formatMinguo(overrideModal.date)} 這一天。</p>
+                                </div>
+                                {renderFormContent(overrideModal.data, changeOv, toggleAtt, toggleCr, toggleEq, busyDataForOverride, true)}
+                            </div>
+                            <div className="p-4 border-t border-gray-200 flex justify-end gap-3 bg-gray-50 flex-shrink-0">
+                                <button type="button" onClick={() => setOverrideModal({ isOpen: false, date: null, data: null })} className="px-6 py-3 text-gray-600 bg-white hover:bg-gray-100 border border-gray-300 rounded-xl font-bold shadow-sm transition-colors">取消變更</button>
+                                <button type="button" onClick={saveOverride} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg transition-colors flex items-center gap-2 text-lg">
+                                    <SvgIcon name="check" className="w-5 h-5" /> 完成微調
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                  )}
+
+                  {/* --- 正常主操作畫面 --- */}
+                  <div className={`flex-1 flex flex-col h-screen bg-gray-50 print:hidden font-sans ${isPreviewMode ? 'hidden' : 'flex'}`}>
+                    <header className="flex-shrink-0 mb-2 flex flex-col md:flex-row items-center justify-between bg-white p-3 md:p-4 rounded-b-xl shadow-sm border-b border-gray-200 gap-3 md:gap-4 z-10 relative">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-blue-100 px-3 py-1.5 rounded-lg text-blue-700 font-black text-lg tracking-widest">外業</div>
+                        <div>
+                          <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">行程排班系統</h1>
+                          {currentAccount&&<span className="text-xs font-bold text-gray-500 mt-0.5 block">您好，{currentAccount.displayName}</span>}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 md:gap-3 justify-center">
+                        <div className="relative">
+                          <SvgIcon name="search" className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                          <input type="text" placeholder="搜尋..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} className="pl-8 pr-8 py-2 border-2 rounded-lg text-sm w-40 md:w-56 focus:border-blue-500 outline-none font-bold shadow-sm" />
+                          {searchQuery && <button onClick={()=>setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 bg-gray-100 rounded-full p-0.5 text-xs font-bold hover:text-gray-600"><SvgIcon name="x" className="w-3.5 h-3.5" /></button>}
+                        </div>
+                        {dbConnected ? <div title="雲端同步中" className="flex items-center gap-1.5 text-sm font-bold text-green-600 border border-green-200 bg-green-50 px-2.5 py-2 rounded-lg shadow-sm"><SvgIcon name="cloud" className="w-4 h-4" /> <span className="hidden md:inline">連線正常</span></div> : <div title="離線模式" className="flex items-center gap-1.5 text-sm font-bold text-red-600 border border-red-200 bg-red-50 px-2.5 py-2 rounded-lg shadow-sm"><SvgIcon name="cloudOff" className="w-4 h-4" /> <span className="hidden md:inline">離線模式</span></div>}
+                        {isSuperAdmin&&<button onClick={()=>{setShowAccMgr(true);setAccMgrTab('list');setAccList(getAccounts());}} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg font-bold shadow-md flex items-center gap-1.5 print:hidden"><SvgIcon name="users" className="w-4 h-4"/><span className="hidden sm:inline">帳號管理</span></button>}
+                        <button onClick={doLogout} className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg font-bold shadow-md flex items-center gap-1.5 print:hidden"><SvgIcon name="x" className="w-4 h-4"/><span className="hidden sm:inline">登出</span></button>
+                        <button onClick={() => setIsPreviewMode(true)} className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-2 rounded-lg font-bold shadow-md transition-colors flex items-center gap-1.5"><SvgIcon name="printer" className="w-4 h-4" /> <span className="hidden sm:inline">預覽列印</span></button>
+                      </div>
+                    </header>
+
+                    {/* 兩欄式流暢佈局 */}
+                    <div className="flex-1 w-full flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden px-2 md:px-4 pb-4 gap-4 min-h-0 relative">
+                        {/* 左面板 */}
+                        <div className="w-full lg:w-[480px] flex-shrink-0 flex flex-col bg-white rounded-xl shadow-sm border border-gray-200 lg:h-full min-h-[600px] overflow-hidden">
+                            <div className="flex border-b bg-slate-50 shrink-0">
+{isEditor && <button onClick={() => setActiveTab('task')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-1.5 ${currentTab === 'task' ? 'bg-white text-blue-700 border-b-4 border-blue-600' : 'text-gray-500 hover:bg-gray-100'}`}><SvgIcon name="fileText" className="w-4 h-4" /> 出勤/派車</button>}
+                                <button onClick={() => setActiveTab('leave')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-1.5 ${currentTab === 'leave' ? 'bg-white text-red-700 border-b-4 border-red-500' : 'text-gray-500 hover:bg-gray-100'}`}><SvgIcon name="userX" className="w-4 h-4" /> 請假登記</button>
+{isAdmin && <button onClick={() => setActiveTab('stats')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-1.5 ${currentTab === 'stats' ? 'bg-white text-purple-700 border-b-4 border-purple-600' : 'text-gray-500 hover:bg-gray-100'}`}><SvgIcon name="barChart" className="w-4 h-4" /> 統計</button>}
+{isAdmin && <button onClick={() => setActiveTab('settings')} className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-1.5 ${currentTab === 'settings' ? 'bg-white text-indigo-700 border-b-4 border-indigo-600' : 'text-gray-500 hover:bg-gray-100'}`}><SvgIcon name="settings" className="w-4 h-4" /> 管理</button>}
+                            </div>
+
+                            <div className="p-3 md:p-5 flex-1 overflow-y-auto custom-scrollbar relative">
+                                {currentTab === 'task' && !isViewer && (
+                                  <form onSubmit={handleTaskSubmit} className="space-y-4">
+                                    <div className="flex justify-between items-center mb-1">
+                                      <h2 className="text-lg font-black text-gray-800 flex items-center gap-1.5">
+                                          {editingTaskId ? <SvgIcon name="edit" className="w-5 h-5 text-orange-500" /> : <SvgIcon name="plus" className="w-5 h-5 text-blue-600" />}
+                                          {editingTaskId ? '編輯行程' : '出勤/派車'}
+                                      </h2>
+                                      {editingTaskId && <button type="button" onClick={resetFd} className="text-xs bg-gray-100 px-3 py-1.5 rounded-lg font-bold text-gray-500 hover:bg-gray-200 border">取消編輯</button>}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">開始日期</label><input type="date" name="startDate" value={formData.startDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">結束日期</label><input type="date" name="endDate" value={formData.endDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時間</label><input type="text" name="time" value={formData.time} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-blue-500" required/></div>
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時段</label><select name="timeSlot" value={formData.timeSlot} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500 bg-white"><option>自動判定</option><option>上半天</option><option>下半天</option><option>全天</option></select></div>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-3">
+                                      <div className="col-span-2"><label className="text-xs font-bold text-gray-500 mb-1 block">案名</label><AutocompleteInput name="projectName" value={formData.projectName} onChange={changeFd} options={uniqueProjectNames} placeholder="輸入案名" required /></div>
+                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="text" name="households" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
+                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">項目</label><select name="itemType" value={formData.itemType} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white">{ITEM_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
+                                    </div>
+                                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">備註</label><input type="text" name="notes" value={formData.notes} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-medium focus:border-blue-500" placeholder="例: 114鑑443 或 1(負責人)"/></div>
+                                    
+                                    {renderFormContent(formData, changeFd, toggleAtt, toggleCr, toggleEq, busyDataForForm, false)}
+                                    
+                                    <div className={`p-3 rounded-lg border-2 flex items-center gap-3 ${formData.status==='cancelled'?'bg-red-50 border-red-200':'bg-gray-50 border-gray-200'}`}>
+                                      <label className="font-bold flex items-center gap-1.5 whitespace-nowrap cursor-pointer text-red-700 text-sm">
+                                          <input type="checkbox" checked={formData.status==='cancelled'} onChange={e=>setFormData({...formData, status:e.target.checked?'cancelled':'active'})} className="w-4 h-4 rounded text-red-600"/>
+                                          <SvgIcon name="slash" className="w-4 h-4" /> 取消行程
+                                      </label>
+                                      {formData.status==='cancelled' && <div className="flex flex-1 gap-2"><select name="cancelReason" value={formData.cancelReason} onChange={changeFd} className="border-2 p-1 rounded bg-white text-sm font-bold border-red-200 focus:border-red-500 outline-none"><option value="">原因</option>{CANCEL_REASONS.map(r=><option key={r}>{r}</option>)}</select><input type="text" name="cancelReason" value={CANCEL_REASONS.includes(formData.cancelReason)?'':formData.cancelReason} onChange={changeFd} placeholder="其他原因..." className="flex-1 border-2 p-1 rounded text-sm font-bold border-red-200 focus:border-red-500 outline-none"/></div>}
+                                    </div>
+
+                                    {formDates.length>1 && !editingTaskId && (
+                                      <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-200">
+                                        <h3 className="font-black text-indigo-900 mb-2 flex items-center gap-1.5"><SvgIcon name="calendarDays" className="w-4 h-4" /> 連續 {formDates.length} 天預覽</h3>
+                                        <div className="space-y-2">
+                                          {formDates.map(d => {
+                                            const dayData = dailyOverrides[d] || formData;
+                                            const extEqs = getExtraEquipments(dayData);
+                                            const dEqList = [];
+                                            if (dayData.eqTheodolite) dEqList.push(`經(${dayData.eqTheodolite})`);
+                                            if (dayData.eqLevel) dEqList.push(`水(${dayData.eqLevel})`);
+                                            dEqList.push(...extEqs);
+                                            const taskCars = dayData.cars && dayData.cars.length > 0 ? dayData.cars : (dayData.car ? [safeStr(dayData.car)] : []);
+
+                                            return (
+                                              <div key={d} className="bg-white p-2.5 rounded-lg border shadow-sm flex flex-col gap-1.5">
+                                                <div className="flex justify-between items-center">
+                                                  <div className="font-bold text-indigo-900 flex items-center gap-1.5">
+                                                    <span className="bg-indigo-100 px-1.5 py-0.5 rounded text-xs">{d.slice(5)} ({getDayOfWeek(d)})</span>
+                                                    {dailyOverrides[d] && <span className="text-red-500 text-[10px] ml-1 bg-red-50 px-1 rounded border border-red-200">已微調</span>}
+                                                  </div>
+                                                  <button type="button" onClick={()=>setOverrideModal({isOpen:true,date:d,data:dailyOverrides[d]||{...formData}})} className="bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-1 rounded text-[10px] font-black hover:bg-indigo-100 transition-colors flex items-center gap-1"><SvgIcon name="edit" className="w-3 h-3" /> 獨立微調</button>
+                                                </div>
+                                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-100">
+                                                  <span>人員: <span className="text-blue-700">{dayData.attendees.length > 0 ? dayData.attendees.map(getPrintName).join('、') : '無'}</span></span>
+                                                  <span>儀器: <span className="text-purple-700">{dEqList.length > 0 ? dEqList.join('、') : '無'}</span></span>
+                                                  <span>車輛: <span className="text-green-700">{taskCars.length > 0 ? taskCars.join('、') : '無'}</span></span>
+                                                </div>
+                                              </div>
+                                            )
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <button type="submit" className={`w-full text-white font-black py-3.5 rounded-xl shadow-md transition-transform hover:-translate-y-0.5 text-lg flex items-center justify-center gap-2 ${editingTaskId?'bg-orange-500 hover:bg-orange-600':'bg-blue-600 hover:bg-blue-700'}`}>
+                                        {editingTaskId ? <SvgIcon name="edit" className="w-5 h-5" /> : <SvgIcon name="plus" className="w-5 h-5" />}
+                                        {editingTaskId?'儲存更新':'新增排班'}
+                                    </button>
+                                  </form>
+                                )}
+
+                                {currentTab === 'leave' && (
+                                  <div className="flex flex-col h-full space-y-4">
+                                    <form onSubmit={handleLeaveSubmit} className="space-y-3 flex-shrink-0 bg-white p-1 rounded-xl">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <h2 className="text-base font-bold flex items-center gap-1.5 text-gray-800">
+                                                {editingLeaveId ? <SvgIcon name="edit" className="w-4 h-4 text-red-500" /> : <SvgIcon name="plus" className="w-4 h-4 text-red-500" />}
+                                                請假登記
+                                            </h2>
+                                            {editingLeaveId && <button type="button" onClick={() => { setEditingLeaveId(null); setLeaveFormData({ startDate: todayStr, endDate: todayStr, person: '', leaveType: '全天', leaveCategory: '特休', leaveNotes: '' }); }} className="text-xs bg-gray-100 px-2 py-1 rounded border hover:bg-gray-200 text-gray-500">取消編輯</button>}
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div><label className="block text-[10px] font-bold text-gray-500 mb-0.5">開始日期</label><input type="date" value={leaveFormData.startDate} onChange={e => setLeaveFormData({...leaveFormData, startDate: e.target.value, endDate: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-red-500" required /></div>
+                                            <div><label className="block text-[10px] font-bold text-gray-500 mb-0.5">結束日期</label><input type="date" value={leaveFormData.endDate} onChange={e => setLeaveFormData({...leaveFormData, endDate: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-red-500" required /></div>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-500 mb-0.5">人員</label>
+                                                <select value={leaveFormData.person} onChange={e => setLeaveFormData({...leaveFormData, person: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-red-500 bg-white" required>
+                                                    <option value="">選擇人員</option>
+                                                    {(isSuperAdmin?personnel:[currentAccount?.displayName].filter(Boolean)).map(p=><option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-500 mb-0.5">假別</label>
+                                                <select value={leaveFormData.leaveCategory} onChange={e => setLeaveFormData({...leaveFormData, leaveCategory: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-red-500 bg-white">
+                                                    {LEAVE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="col-span-1">
+                                                <label className="block text-[10px] font-bold text-gray-500 mb-0.5">時段</label>
+                                                <select value={leaveFormData.leaveType} onChange={e => setLeaveFormData({...leaveFormData, leaveType: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-red-500 bg-white">
+                                                    <option value="全天">全天</option><option value="上半天">上半天</option><option value="下半天">下半天</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div><label className="block text-[10px] font-bold text-gray-500 mb-0.5">備註 (不印出)</label><input type="text" value={leaveFormData.leaveNotes} onChange={e => setLeaveFormData({...leaveFormData, leaveNotes: e.target.value})} className="w-full border-2 p-1.5 rounded-lg font-medium outline-none focus:border-red-500" /></div>
+                                        <button type="submit" className="w-full py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold shadow-md flex justify-center items-center gap-1.5">
+                                            <SvgIcon name="check" className="w-4 h-4" /> {editingLeaveId ? '確認更新請假' : '確認新增請假'}
+                                        </button>
+                                    </form>
+
+                                    <div className="border-t pt-3 flex-1 flex flex-col min-h-0">
+                                        <h3 className="font-bold text-red-900 mb-2 flex items-center gap-1.5 shrink-0 text-sm"><SvgIcon name="calendarDays" className="w-4 h-4" /> 當月假單 ({viewDateStr.substring(0, 7)})</h3>
+                                        <div className="border rounded-lg shadow-sm overflow-hidden bg-white flex-1 flex flex-col">
+                                            <table className="w-full text-xs text-left shrink-0">
+                                                <thead className="bg-red-50 border-b"><tr><th className="p-2">日期</th><th className="p-2">人員</th><th className="p-2">明細</th><th className="p-2 text-center">操作</th></tr></thead>
+                                            </table>
+                                            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                              <table className="w-full text-xs text-left">
+                                                  <tbody className="divide-y divide-red-50">
+                                                      {leaves.filter(l => (l.date || '').startsWith(viewDateStr.substring(0, 7))).sort((a, b) => safeStr(a.date).localeCompare(safeStr(b.date))).map(l => (
+                                                          <tr key={l.id} className="hover:bg-red-50">
+                                                              <td className="p-2 font-medium w-1/4">{safeStr(l.date).substring(5)}</td>
+                                                              <td className="p-2 w-1/4">
+                                                                  <div className="flex items-center gap-1.5"><span className="font-bold text-red-700">{l.person}</span></div>
+                                                              </td>
+                                                              <td className="p-2 text-xs text-gray-600 w-2/4"><span className="bg-gray-100 px-1 py-0.5 rounded font-bold border text-[10px] mr-1">{l.leaveCategory}({l.leaveType})</span> {l.leaveNotes}</td>
+                                                              <td className="p-2 text-center flex justify-center gap-1.5 w-1/4">
+{(isSuperAdmin||l.person===currentAccount?.displayName)&&<button onClick={() => editLeave(l)} className="text-blue-500 p-1 hover:bg-blue-50 rounded border border-transparent hover:border-blue-200"><SvgIcon name="edit" className="w-3.5 h-3.5" /></button>}
+{(isSuperAdmin||l.person===currentAccount?.displayName)&&<button onClick={() => deleteLeave(l.id)} className="text-red-500 p-1 hover:bg-red-50 rounded border border-transparent hover:border-red-200"><SvgIcon name="trash" className="w-3.5 h-3.5" /></button>}
+                                                              </td>
+                                                          </tr>
+                                                      ))}
+                                                      {leaves.filter(l => (l.date || '').startsWith(viewDateStr.substring(0, 7))).length === 0 && <tr><td colSpan="4" className="p-6 text-center text-gray-400 italic font-bold">本月無請假</td></tr>}
+                                                  </tbody>
+                                              </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                              )}
+
+                              {currentTab === 'settings' && isAdmin && (
+                                <div className="space-y-4">
+
+                                  <div className="bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm">
+                                    <div className="flex justify-between items-center mb-3">
+                                      <h3 className="font-black text-green-900 text-sm flex items-center gap-1.5">
+                                        <SvgIcon name="check" className="w-4 h-4 text-green-600"/>
+                                        當月會勘完成案件
+                                      </h3>
+                                      <button onClick={()=>{
+                                        const _vd=new Date(viewDateStr);
+                                        const ym=`${_vd.getFullYear()}-${String(_vd.getMonth()+1).padStart(2,'0')}`;
+                                        const done=tasks.filter(t=>t.siteVisitDone&&t.date&&t.date.startsWith(ym));
+                                        if(done.length===0){alert(`${_vd.getFullYear()-1911}年${_vd.getMonth()+1}月尚無已完成會勘的案件。`);return;}
+                                        const txt=[`${_vd.getFullYear()-1911}年${_vd.getMonth()+1}月 現場已完成會勘作業`,''];
+                                        done.sort((a,b)=>a.date.localeCompare(b.date)).forEach(t=>{
+                                          txt.push(`${t.date} ${t.projectName||''}${t.households?`(${t.households}戶)`:''} ${t.itemType||''}`);
+                                        });
+                                        const _lastLog=(()=>{try{const l=JSON.parse(localStorage.getItem('__editlogs')||'[]');return l[0]?l[0].time:'';}catch(e){return '';}})();
+                                        txt.push('');txt.push(`共 ${done.length} 件`);txt.push('');if(_lastLog)txt.push(`最後更新：${_lastLog}`);
+                                        const a=document.createElement('a');
+                                        a.href=URL.createObjectURL(new Blob([txt.join('\n')],{type:'text/plain;charset=utf-8'}));
+                                        a.download=`${_vd.getFullYear()-1911}年${_vd.getMonth()+1}月會勘完成清單.txt`;
+                                        a.click();
+                                      }} className="bg-green-600 hover:bg-green-700 text-white text-xs font-black px-3 py-1.5 rounded-lg flex items-center gap-1">
+                                        <SvgIcon name="download" className="w-3.5 h-3.5"/> 下載清單
+                                      </button>
+                                    </div>
+                                    {(()=>{
+                                      const _vd2=new Date(viewDateStr);
+                                      const ym=`${_vd2.getFullYear()}-${String(_vd2.getMonth()+1).padStart(2,'0')}`;
+                                      const done=tasks.filter(t=>t.siteVisitDone&&t.date&&t.date.startsWith(ym));
+                                      if(done.length===0) return <p className="text-green-600 text-xs text-center py-3 font-bold">本月尚無已完成會勘的案件</p>;
+                                      return <div className="space-y-1.5 max-h-48 overflow-y-auto">{done.sort((a,b)=>a.date.localeCompare(b.date)).map(t=>(
+                                        <div key={t.id} className="bg-white border border-green-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                          <SvgIcon name="check" className="w-4 h-4 text-green-600 flex-shrink-0"/>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-black text-gray-800 text-xs">{t.date} {t.projectName}{t.households?`(${t.households}戶)`:''}</div>
+                                            <div className="text-[10px] text-gray-500">{t.itemType}{t.attendees&&t.attendees.length>0?` • ${t.attendees.join('、')}`:''}</div>
+                                          </div>
+                                        </div>
+                                      ))}</div>;
+                                    })()}
+                                  </div>
+
+                                  <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 shadow-sm">
+                                    <div className="flex justify-between items-center mb-3">
+                                      <h3 className="font-black text-gray-900 text-sm flex items-center gap-1.5">
+                                        <SvgIcon name="fileText" className="w-4 h-4 text-gray-600"/>
+                                        編輯紀錄（最近50筆）
+                                      </h3>
+                                      <button onClick={()=>{localStorage.removeItem('__editlogs');showAlert('已清除','編輯紀錄已清除。');}} className="text-xs text-gray-400 hover:text-red-500 font-bold px-2 py-1 rounded border border-gray-200 hover:border-red-300">清除</button>
+                                    </div>
+                                    {(()=>{
+                                      try{
+                                        const logs=JSON.parse(localStorage.getItem('__editlogs')||'[]');
+                                        if(logs.length===0) return <p className="text-gray-400 text-xs text-center py-3 font-bold">尚無編輯紀錄</p>;
+                                        return <div className="space-y-1 max-h-60 overflow-y-auto">{logs.slice(0,50).map(log=>(
+                                          <div key={log.id} className="bg-white border border-gray-100 rounded-lg px-3 py-1.5 flex items-center gap-2">
+                                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0 ${log.action.includes('刪除')?'bg-red-100 text-red-700':log.action.includes('新增')?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700'}`}>{log.action}</span>
+                                            <span className="text-xs text-gray-700 font-bold truncate flex-1">{log.detail}</span>
+                                            <span className="text-[10px] text-gray-400 flex-shrink-0">{log.user}</span>
+                                            <span className="text-[10px] text-gray-300 flex-shrink-0">{log.time}</span>
+                                          </div>
+                                        ))}</div>;
+                                      }catch(e){return null;}
+                                    })()}
+                                  </div>
+                                  {/* 💡 資料備份與還原區塊 */}
+                                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-200 shadow-sm">
+                                      <h3 className="font-black text-blue-900 mb-2 flex items-center gap-1.5 text-sm"><SvgIcon name="cloud" className="w-4 h-4" /> 系統與資料管理</h3>
+                                      <p className="text-[11px] text-blue-700 mb-3 font-bold">可以將目前所有的行程、人員與設定備份到電腦中，或從備份檔還原。</p>
+                                      <div className="flex flex-col gap-2">
+                                          <button onClick={exportAllData} className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm shadow-sm flex items-center justify-center gap-1.5 transition-colors"><SvgIcon name="download" className="w-4 h-4" /> 📥 下載所有資料備份 (JSON)</button>
+                                          
+                                          <label className="w-full py-2 bg-white hover:bg-gray-50 border-2 border-dashed border-blue-300 text-blue-600 rounded-lg font-bold text-sm shadow-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+                                              <SvgIcon name="upload" className="w-4 h-4" /> 📤 匯入備份還原資料
+                                              <input type="file" accept=".json" onChange={importAllData} ref={fileInputRef} className="hidden" />
+                                          </label>
+                                      </div>
+                                  </div>
+
+                                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 shadow-sm"><h3 className="font-black text-indigo-900 mb-1 flex items-center gap-1.5 text-sm"><SvgIcon name="printer" className="w-4 h-4" /> 列印簡稱設定</h3><p className="text-[10px] text-indigo-700 mb-3 font-bold">預設抓取名字最後一字，可自行修改覆蓋。</p><div className="grid grid-cols-4 sm:grid-cols-5 gap-2">{personnel.map(p=>(<div key={p} className="flex flex-col bg-white p-1.5 rounded-lg border border-indigo-100 shadow-sm"><span className="font-black text-gray-700 mb-1 text-[10px] text-center">{p}</span><ShortNameInput person={p} defaultVal={shortNames[p]} onSave={updateShortName} /></div>))}</div></div>
+                                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm"><h3 className="font-black text-gray-800 mb-3 flex items-center gap-1.5 text-sm"><SvgIcon name="users" className="w-4 h-4 text-indigo-600" /> 人員名單管理</h3><div className="flex gap-1 mb-3"><input type="text" value={newEmp.n} onChange={e=>setNewEmp({...newEmp,n:e.target.value})} placeholder="新姓名" className="border-2 p-1.5 rounded text-xs w-1/2 font-bold outline-none focus:border-indigo-500"/><select value={newEmp.job} onChange={e=>setNewEmp({...newEmp,job:e.target.value})} className="border-2 p-1.5 rounded text-xs font-bold outline-none bg-white flex-1"><option value="field">外勤</option><option value="indoor">內業</option><option value="manager">主管</option></select><button onClick={addEmp} className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 rounded font-black text-xs shadow-sm flex items-center gap-1"><SvgIcon name="plus" className="w-3.5 h-3.5" />新增</button></div><div className="space-y-1.5 mt-4">{personnel.map(p=>(<div key={p} className="flex justify-between items-center border p-2 rounded bg-gray-50"><span className="font-black text-gray-800 text-xs flex items-center gap-1"><SvgIcon name="userX" className="w-3 h-3 text-gray-400" /> {p} {managers.includes(p)&&<span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.5 rounded ml-0.5">主管</span>}{indoors.includes(p)&&<span className="text-[9px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded ml-0.5">內業</span>}</span><button onClick={()=>delEmp(p)} className="text-red-500 bg-white hover:bg-red-50 p-1.5 rounded border shadow-sm"><SvgIcon name="trash" className="w-3.5 h-3.5" /></button></div>))}</div></div>
+                                  <div className="flex flex-col gap-4"><div className="bg-green-50 p-4 rounded-xl border border-green-200 shadow-sm"><p className="font-black mb-3 text-green-900 flex items-center gap-1.5 text-sm"><SvgIcon name="car" className="w-5 h-5 text-green-600" /> 車輛庫存管理</p><div className="flex gap-2 mb-3"><input type="text" value={newCarName} onChange={e=>setNewCarName(e.target.value)} className="border-2 p-1.5 rounded-lg flex-1 outline-none font-bold text-sm focus:border-green-500"/><button onClick={handleAddCar} type="button" className="bg-green-600 hover:bg-green-700 text-white px-3 rounded-lg font-bold text-sm shadow flex items-center gap-1"><SvgIcon name="plus" className="w-4 h-4"/> 新增</button></div><div className="flex flex-wrap gap-2">{cars.filter(Boolean).map(c=><span key={c} className="bg-white border px-2.5 py-1 rounded-md text-xs font-bold shadow-sm flex items-center">{c} <button onClick={()=>handleDeleteCar(c)} className="ml-1.5 text-gray-400 hover:text-red-500 transition-colors"><SvgIcon name="x" className="w-3.5 h-3.5" /></button></span>)}</div></div><div className="bg-purple-50 p-4 rounded-xl border border-purple-200 shadow-sm"><p className="font-black mb-3 text-purple-900 flex items-center gap-1.5 text-sm"><SvgIcon name="wrench" className="w-5 h-5 text-purple-600" /> 自訂儀器庫存管理</p><div className="flex flex-col gap-2 mb-3"><input type="text" value={newEqName} onChange={e=>setNewEqName(e.target.value)} className="border-2 p-1.5 rounded-lg w-full outline-none font-bold text-sm focus:border-purple-500" placeholder="名稱"/><div className="flex gap-2"><input type="text" list="cat-list" value={newEqCat} onChange={e=>setNewEqCat(e.target.value)} className="border-2 p-1.5 rounded-lg flex-1 outline-none font-bold text-sm focus:border-purple-500 bg-white" placeholder="分類"/><datalist id="cat-list">{availableCategoriesForDatalist.map(c=><option key={c} value={c} />)}</datalist><button onClick={handleAddEq} type="button" className="bg-purple-600 hover:bg-purple-700 text-white px-3 rounded-lg font-bold text-sm shadow flex items-center gap-1"><SvgIcon name="plus" className="w-4 h-4" /> 新增</button></div></div><div className="flex flex-wrap gap-2">{customEqsList.map(e=><span key={e.name} className="bg-white border px-2.5 py-1 rounded-md text-xs font-bold shadow-sm flex items-center">{e.name} <button onClick={()=>handleDeleteEq(e.name)} className="ml-1.5 text-gray-400 hover:text-red-500 transition-colors"><SvgIcon name="x" className="w-3.5 h-3.5" /></button></span>)}</div></div></div>
+                                </div>
+                              )}
+
+                              {currentTab === 'stats' && isAdmin && (
+                                <div className="space-y-4">
+                                  <div className="bg-gradient-to-r from-indigo-800 to-blue-900 p-4 rounded-xl text-white flex justify-between items-center shadow-lg"><h3 className="font-black text-lg flex items-center gap-2"><SvgIcon name="barChart" className="w-5 h-5 text-purple-300" /> 出勤統計</h3><button onClick={exportStatsCSV} className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg font-bold text-sm transition-colors border border-white/30 flex items-center gap-1.5"><SvgIcon name="download" className="w-3.5 h-3.5" />下載 CSV</button></div>
+                                  <table className="w-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden text-sm text-center">
+                                    <thead className="bg-gray-100 font-black border-b border-gray-200 text-gray-700 text-xs"><tr><th className="py-3">人員</th><th>當週</th><th>當月</th><th>月假</th></tr></thead>
+                                    <tbody className="divide-y divide-gray-100">{Object.entries(attendanceStats).sort((a,b)=>CUSTOM_SORT_ORDER.indexOf(a[0])-CUSTOM_SORT_ORDER.indexOf(b[0])).map(([p, s])=>{ if(!personnel.includes(p)) return null; return <tr key={p} className="hover:bg-gray-50"><td className="py-2.5 font-black text-left pl-6 text-sm flex items-center gap-2"><SvgIcon name="userX" className="w-3.5 h-3.5 text-gray-400" /> {p}</td><td className="font-black text-blue-600 text-base bg-blue-50/30">{s.thisWeekDays.size||'-'}</td><td className="font-black text-orange-600 text-base">{s.thisMonthDays.size||'-'}</td><td className="text-red-600 font-black text-base bg-red-50/30">{s.leaveThisMonth||'-'}</td></tr>})}</tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                        </div>
+
+                        {/* 右側日曆/列表區 */}
+                        <div className="flex-1 w-full flex flex-col bg-transparent lg:bg-white lg:rounded-xl lg:border lg:shadow-sm lg:h-full min-h-[600px] overflow-hidden">
+                          <div className="flex-shrink-0 flex justify-between items-center bg-white rounded-xl lg:rounded-none border lg:border-0 px-4 py-2.5 lg:border-b shadow-sm lg:shadow-none mb-3 lg:mb-0">
+                            <button onClick={goToPrev} className="p-2 hover:bg-gray-100 rounded-lg font-black text-gray-600 transition-colors flex items-center gap-1 text-sm"><SvgIcon name="chevronLeft" className="w-5 h-5" /> <span className="hidden sm:inline">上頁</span></button>
+                            <div className="text-center flex items-center gap-3">
+                                <h2 className="text-xl font-black text-blue-900 cursor-pointer hover:text-blue-700 transition-colors flex items-center justify-center gap-2" onClick={goToToday}>
+                                  <SvgIcon name="calendar" className="w-5 h-5 text-blue-500" /> {viewMode === 'week' ? `${formatMinguo(viewWeekDates[0])} ~ ${formatMinguo(viewWeekDates[6])}` : `${new Date(viewDateStr).getFullYear()-1911}年 ${new Date(viewDateStr).getMonth()+1}月`}
+                                </h2>
+                                <div className="flex justify-center bg-slate-100 p-0.5 rounded-lg border shadow-inner max-w-[160px] mx-auto">
+                                  <button onClick={() => setViewMode('week')} className={`flex-1 py-1 px-2 rounded-md text-xs font-bold transition-all flex justify-center items-center gap-1.5 ${viewMode === 'week' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><SvgIcon name="list" className="w-3.5 h-3.5" /> 週表</button>
+                                  <button onClick={() => setViewMode('month')} className={`flex-1 py-1 px-2 rounded-md text-xs font-bold transition-all flex justify-center items-center gap-1.5 ${viewMode === 'month' ? 'bg-white shadow text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}><SvgIcon name="calendarDays" className="w-3.5 h-3.5" /> 月曆</button>
+                                </div>
+                                <button onClick={goToToday} className="text-xs font-bold bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition-colors shadow-sm ml-2 hidden lg:block">回到今天</button>
+                            </div>
+                            <button onClick={goToNext} className="p-2 hover:bg-gray-100 rounded-lg font-black text-gray-600 transition-colors flex items-center gap-1 text-sm"><span className="hidden sm:inline">下頁</span> <SvgIcon name="chevronRight" className="w-5 h-5" /></button>
+                          </div>
+                          
+                          <div className="flex-1 overflow-y-auto custom-scrollbar lg:p-4 space-y-3 pb-10">
+                            {viewMode === 'week' ? (
+                                Object.keys(scheduleByDate).length === 0 ? (
+                                  <div className="text-center text-gray-400 font-bold py-24 bg-white rounded-2xl border-2 border-dashed border-gray-200 flex flex-col items-center justify-center"><SvgIcon name="calendarDays" className="w-16 h-16 text-gray-200 mb-4"/>目前區間無排班紀錄</div>
+                                ) : Object.entries(scheduleByDate).map(([date, data]) => (
+                                  <div key={date} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                    <div className="bg-blue-50/80 px-4 py-2 border-b border-blue-100 flex justify-between items-center">
+                                      <h3 className="font-black text-base text-blue-900 flex items-center gap-1.5">{formatMinguo(date)} ({getDayOfWeek(date)}) {holidays[date]&&<span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full shadow-sm border border-red-200 uppercase tracking-widest">{holidays[date]}</span>}</h3>
+                                      <span className="text-[10px] font-black text-blue-700 bg-white px-2 py-0.5 rounded shadow-sm border border-blue-100">外勤 {data.tasks.length} 趟</span>
+                                    </div>
+                                    {data.leaves.length > 0 && (
+                                      <div className="bg-red-50/50 px-4 py-2 border-b border-red-100 flex flex-wrap gap-2 items-center">
+                                        <span className="text-xs font-black text-red-800 flex items-center gap-1 bg-red-100 px-2 py-0.5 rounded shadow-sm"><SvgIcon name="userX" className="w-3.5 h-3.5" /> 請假</span>
+                                        {/* 💡 修改點 1: 月曆與週表畫面中，請假名單並排顯示 */}
+                                        <div className="text-xs text-red-700 font-bold break-words">
+                                            {data.leaves.map(l => `${getPrintName(l.person)}${l.leaveType !== '全天' ? `(${l.leaveType})` : ''}`).join('、')}
+                                        </div>
+                                      </div>
+                                    )}
+                                    <div className="bg-slate-50 px-4 py-2 border-b border-gray-200 text-xs font-bold text-slate-700 flex gap-2 items-center">
+                                      <span className="shrink-0 bg-white border border-slate-300 px-2 py-0.5 rounded shadow-sm text-gray-600">內業</span>
+                                      <span className="text-gray-500 truncate">{data.internalStaff.map(getPrintName).join('、') || '無'}</span>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                      {data.tasks.length===0 ? <div className="p-4 text-center text-sm font-bold text-gray-400 bg-white">當日無排班</div> : data.tasks.map(task => {
+                                        const taskCars = task.cars && task.cars.length > 0 ? task.cars : (task.car ? [safeStr(task.car)] : []);
+                                        const extEqs = getExtraEquipments(task);
+                                        const dEqList = [];
+                                        if (task.eqTheodolite) dEqList.push(`經(${task.eqTheodolite})`);
+                                        if (task.eqLevel) dEqList.push(`水(${task.eqLevel})`);
+                                        dEqList.push(...extEqs);
+
+                                        return (
+                                        <div key={task.id} className={`p-2 transition-colors flex items-center gap-2 ${task.id===editingTaskId?'bg-blue-50':'hover:bg-gray-50 bg-white'}`}>
+                                           <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={()=>toggleSelectTask(task.id)} className={`ml-2 w-4 h-4 cursor-pointer shrink-0 rounded text-blue-600 border border-gray-400 shadow-sm ${isViewer?'hidden':''}`}/>
+                                           <div className="flex-1 min-w-0 flex flex-col gap-0.5 py-1">
+                                              <div className={`font-bold ${task.status==='cancelled'?'line-through text-gray-400':'text-gray-900'} flex items-center gap-2 flex-wrap`}>
+                                                  <span className="text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-sm shadow-sm font-black tracking-tight">{formatTimeDisplay(task.time, task.timeSlot)}</span>
+                                                  <span className="text-base md:text-[15px] truncate max-w-[280px]">{safeStr(task.projectName)} {task.households?<span className="text-gray-500 font-medium text-xs">({task.households}戶)</span>:''}</span>
+                                                  <span className="text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded shadow-sm font-bold">[{task.itemType}]</span>
+                                                  {/* 💡 修改點 3: 備註接在項目後方 */}
+                                                  {task.notes && <span className="text-xs font-bold text-blue-900">※ {task.notes}</span>}
+                                                  {task.status==='cancelled' && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1"><SvgIcon name="slash" className="w-2.5 h-2.5" /> 取消: {task.cancelReason}</span>}
+                                              </div>
+                                              <div className={`flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold mt-0.5 ${task.status==='cancelled'?'opacity-50 text-gray-400':'text-gray-600'}`}>
+                                                  <span className="flex items-center gap-1 bg-blue-50/50 px-1.5 py-0.5 rounded border border-blue-100"><span className="text-blue-800/60">人員:</span> <span className="text-blue-800">{(task.attendees||[]).map(getPrintName).join('、') || '無'}</span></span>
+                                                  <span className="flex items-center gap-1 bg-purple-50/50 px-1.5 py-0.5 rounded border border-purple-100"><span className="text-purple-800/60">儀器:</span> <span className="text-purple-800">{dEqList.length>0 ? dEqList.join('、') : '無'}</span></span>
+                                                  <span className="flex items-center gap-1 bg-green-50/50 px-1.5 py-0.5 rounded border border-green-100"><span className="text-green-800/60">車輛:</span> <span className="text-green-800">{taskCars.length>0 ? taskCars.join('、') : '無'}</span></span>
+                                              </div>
+                                           </div>
+                                           {/* 💡 修改點 3: 操作按鈕水平並排 */}
+                                           {!isViewer&&<div className="flex flex-row gap-1 shrink-0 ml-auto mr-2 no-print items-center self-center">
+                                              <button onClick={()=>{
+                                                const done=!task.siteVisitDone;
+                                                setTasks(prev=>prev.map(t=>t.id===task.id?{...t,siteVisitDone:done}:t));
+                                                if(db&&user)setDoc(doc(db,'artifacts',appId,'public','data','tasks',String(task.id)),{...task,siteVisitDone:done}).catch(()=>{});
+                                              }} className={`p-1 rounded border text-xs font-bold flex items-center gap-0.5 ${task.siteVisitDone?'bg-green-100 text-green-700 border-green-300':'bg-white text-gray-400 border-gray-200'}`} title="會勘完成"><SvgIcon name="check" className="w-3.5 h-3.5"/>{task.siteVisitDone?'完成':'會勘'}</button>
+                                                                                            <button onClick={()=>copyTask(task)} className="p-1 text-emerald-600 bg-white hover:bg-emerald-50 rounded border border-emerald-200 shadow-sm" title="複製"><SvgIcon name="copy" className="w-3.5 h-3.5" /></button>
+                                              <button onClick={()=>editTask(task)} className="p-1 text-blue-600 bg-white hover:bg-blue-50 rounded border border-blue-200 shadow-sm" title="編輯"><SvgIcon name="edit" className="w-3.5 h-3.5" /></button>
+                                              <button onClick={()=>handleDeleteClick(task)} className="p-1 text-red-600 bg-white hover:bg-red-50 rounded border border-red-200 shadow-sm" title="刪除"><SvgIcon name="trash" className="w-3.5 h-3.5" /></button>
+                                           </div>}
+                                        </div>
+                                      )})}
+                                    </div>
+                                  </div>
+                                ))
+                            ) : (
+                                <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col h-full overflow-hidden">
+                                  <div className="grid grid-cols-7 border-b bg-slate-50 flex-shrink-0">
+                                    {['日', '一', '二', '三', '四', '五', '六'].map(d => (
+                                      <div key={d} className="text-center py-2.5 font-black text-slate-500 text-base tracking-widest">{d}</div>
+                                    ))}
+                                  </div>
+                                  <div className="flex flex-col flex-1 overflow-y-auto custom-scrollbar bg-slate-100 gap-[1px]">
+                                    {calendarWeeks.map((week, wIdx) => {
+                                        const isExpanded = expandedWeekIdx === wIdx;
+                                        return (
+                                          <div key={wIdx} className={`grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded ? 'h-auto' : 'min-h-[160px]'}`}>
+                                            {week.map((day, dIdx) => {
+                                              const availCount = getAvailableFieldCount(day.date);
+                                              let dayTasks = tasks.filter(t => t.date === day.date);
+                                              let dayLeaves = leaves.filter(l => l.date === day.date);
+                                              const isToday = day.date === todayStr;
+                                              
+                                              if (searchQuery.trim()) {
+                                                 const q = searchQuery.toLowerCase();
+                                                 dayTasks = dayTasks.filter(t => safeStr(t.projectName).toLowerCase().includes(q) || (t.attendees || []).some(a => safeStr(a).toLowerCase().includes(q)) || safeStr(t.itemType).toLowerCase().includes(q));
+                                                 dayLeaves = dayLeaves.filter(l => safeStr(l.person).toLowerCase().includes(q) || safeStr(l.leaveCategory).toLowerCase().includes(q));
+                                              }
+                                              
+                                              const dayNum = parseInt(day.date.split('-')[2], 10);
+                                              const taskItems = dayTasks.map(t => ({ type: 'task', id: `t-${t.id}`, taskId: t.id, time: formatTimeDisplay(t.time, t.timeSlot), name: safeStr(t.projectName), color: getItemColor(t.itemType, t.status === 'cancelled'), status: t.status }));
+
+                                              return (
+                                                <div key={dIdx} 
+                                                     onClick={(e) => {
+                                                       if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='path') return;
+                                                       setFormData(prev => ({...prev, startDate: day.date, endDate: day.date}));
+                                                       setActiveTab('task');
+                                                       if (expandedWeekIdx === wIdx && formData.startDate === day.date) setExpandedWeekIdx(null);
+                                                       else setExpandedWeekIdx(wIdx);
+                                                     }}
+                                                     className={`p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors flex flex-col relative group ${day.currentMonth ? 'bg-white' : 'bg-gray-50/80 text-gray-400'} ${isExpanded ? 'min-h-[250px]' : 'h-full'} ${isToday ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/10' : ''}`}>
+                                                  <div className="flex justify-between items-start mb-1 flex-shrink-0 relative z-10">
+                                                    <div className="flex flex-col gap-0.5 items-start">
+                                                      <span className={`text-[11px] font-black w-5 h-5 flex items-center justify-center rounded-full transition-colors ${day.date === formData.startDate ? 'bg-blue-600 text-white shadow-sm' : isToday ? 'text-blue-600 bg-blue-100' : (holidays[day.date] || [0,6].includes(new Date(day.date).getDay()) ? 'text-red-500' : 'text-slate-700')}`}>
+                                                        {dayNum}
+                                                      </span>
+                                                      {holidays[day.date] && <span className="text-[8px] text-red-600 font-black bg-red-50 px-1 rounded shadow-sm leading-tight max-w-[50px] truncate" title={holidays[day.date]}>{holidays[day.date]}</span>}
+                                                    </div>
+                                                    {!searchQuery && <span className={`text-[8px] px-1 py-0.5 rounded font-black shadow-sm border ${availCount >= 3 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : availCount > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-100 text-red-700 border-red-200'}`}>剩{availCount}</span>}
+                                                  </div>
+                                                  <div className={`flex-1 space-y-0.5 custom-scrollbar relative z-10 ${isExpanded ? 'overflow-y-auto max-h-[250px] pr-0.5 pb-1' : 'overflow-hidden'}`}>
+                                                    {dayLeaves.length > 0 && (
+                                                      <div className="text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm bg-red-50 text-red-800 border-red-200 break-words line-clamp-2">
+                                                          [假] {dayLeaves.map(l => `${getPrintName(l.person)}${l.leaveType !== '全天' ? `(${l.leaveType})` : ''}`).join('、')}
+                                                      </div>
+                                                    )}
+                                                    {taskItems.slice(0, isExpanded ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
+                                                      <div key={item.id} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
+                                                        <input type="checkbox" checked={selectedTaskIds.includes(item.taskId)} onChange={(e)=>{e.stopPropagation(); toggleSelectTask(item.taskId);}} className={`w-2.5 h-2.5 rounded border-gray-300 cursor-pointer flex-shrink-0 ${isViewer?'hidden':''}`} />
+                                                        {item.status === 'cancelled' && <SvgIcon name="slash" className="w-2 h-2 text-red-500 absolute right-1 opacity-70" />}
+                                                        <span className="truncate">{item.time} {item.name}</span>
+                                                      </div>
+                                                    ))}
+                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
+                                                  </div>
+                                                </div>
+                                              )
+                                            })}
+                                          </div>
+                                        );
+                                    })}
+                                  </div>
+                                </div>
+                            )}
+                          </div>
+                        </div>
+                    </div>
+                  </div>
+                  
+                  {/* --- 列印專用純淨表格排版 (完美同步 PDF 結果) --- */}
+                  {isPreviewMode && (
+                      <div className="w-full min-h-screen bg-gray-200 overflow-auto py-8 print:p-0 print:bg-white font-sans">
+                        <div className="max-w-[1200px] mx-auto bg-white shadow-2xl p-8 rounded-xl print:shadow-none print:p-0 print:m-0 border border-gray-300 print:border-none">
+                            <div className="print:hidden flex justify-between items-center mb-8 bg-gray-800 text-white p-4 rounded-xl shadow-lg border border-gray-700">
+                              <h2 className="font-black text-xl flex items-center gap-2 text-yellow-400"><SvgIcon name="printer" className="w-5 h-5" /> 列印預覽模式</h2>
+                              <div className="flex gap-3">
+                                  <button onClick={()=>setIsPreviewMode(false)} className="px-5 py-2.5 bg-gray-600 hover:bg-gray-500 rounded-lg font-bold border border-gray-500 transition-colors text-white shadow-sm flex items-center gap-1.5"><SvgIcon name="chevronLeft" className="w-4 h-4" /> 結束預覽</button>
+                                  {/* 💡 修改點 2: 修改 onclick 綁定確保列印可以正常執行 */}
+                                  <button onClick={() => executePrint()} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-black shadow-lg border border-blue-500 transition-colors text-lg flex items-center gap-1.5"><SvgIcon name="printer" className="w-5 h-5" /> 執行列印</button>
+                              </div>
+                            </div>
+                            <PrintLayout />
+                        </div>
+                      </div>
+                  )}
+                </Fragment>
+              );
+            };
+
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        };
+
+        if (window.FirebaseAPI) {
+            initApp();
+        } else {
+            window.addEventListener('firebase-ready', initApp);
+        }
+    </script>
+</body>
+</html>
