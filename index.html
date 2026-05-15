@@ -320,6 +320,7 @@
               const [searchQuery, setSearchQuery] = useState('');
               
               const [expandedWeekIdx, setExpandedWeekIdx] = useState(null);
+              const [expandedDayDate, setExpandedDayDate] = useState(null);
               const [selectedTaskIds, setSelectedTaskIds] = useState([]);
               const [showBatchModal, setShowBatchModal] = useState(false);
               const initialBatchData = { attendees: [], cars: [], eqTheodolite: '', eqLevel: '', hasInclinometer: false, hasTiltTube: false, hasStrainGauge: false, hasWaterLevel: false, hasThermal: false, hasMoistureMeter: false, hasEndoscope: false, hasStethoscope: false, hasPipeLocator: false, hasGPR: false, hasOdometer: false, customEqs: [] };
@@ -1189,7 +1190,7 @@
                 const _yr=new Date(viewDateStr).getFullYear()-1911;
                 const _mo=new Date(viewDateStr).getMonth()+1;
                 if(viewMode==='month') return (
-                  <div style={{width:'100%',height:'197mm',display:'flex',flexDirection:'column',fontFamily:'sans-serif',color:'#000',boxSizing:'border-box',WebkitPrintColorAdjust:'exact',colorAdjust:'exact'}}>
+                  <div style={{width:'100%',height:'197mm',maxHeight:'197mm',display:'flex',flexDirection:'column',fontFamily:'sans-serif',color:'#000',boxSizing:'border-box',WebkitPrintColorAdjust:'exact',colorAdjust:'exact',overflow:'hidden'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,marginBottom:'2px'}}>
                       <div style={{flex:1}}></div>
                       <h2 style={{textAlign:'center',fontWeight:900,fontSize:'13px',margin:0,flex:2}}>{_yr}年{_mo}月 外業行程總覽</h2>
@@ -1220,7 +1221,7 @@
                                       <div key={i} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#b91c1c',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>[假]{getPrintName(lv.person)}{lv.leaveType!=='全天'?`(${lv.leaveType})`:''}</div>
                                     ))}
                                     {dt.map(t=>(
-                                      <div key={t.id} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#000',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{formatTimeDisplay(t.time,t.timeSlot)} {safeStr(t.projectName)}</div>
+                                      <div key={t.id} style={{fontSize:'9px',lineHeight:'1.1',fontWeight:'bold',color:'#000',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{formatTimeDisplay(t.time,t.timeSlot)} {safeStr(t.projectName)}</div>
                                     ))}
                                   </div>
                                 </div>
@@ -2103,20 +2104,21 @@
                                                     </div>
                                                     {!searchQuery && <span className={`text-[8px] px-1 py-0.5 rounded font-black shadow-sm border ${availCount >= 3 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : availCount > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-100 text-red-700 border-red-200'}`}>剩{availCount}</span>}
                                                   </div>
-                                                  <div className={`flex-1 space-y-0.5 custom-scrollbar relative z-10 ${isExpanded ? 'overflow-y-auto max-h-[250px] pr-0.5 pb-1' : 'overflow-hidden'}`}>
+                                                  <div className={`flex-1 space-y-0.5 custom-scrollbar relative z-10 ${expandedDayDate === day.date ? 'overflow-y-auto max-h-[200px] pr-0.5 pb-1' : 'overflow-hidden'}`}>
                                                     {dayLeaves.length > 0 && (
                                                       <div className="text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm bg-red-50 text-red-800 border-red-200 break-words line-clamp-2">
                                                           [假] {dayLeaves.map(l => `${getPrintName(l.person)}${l.leaveType !== '全天' ? `(${l.leaveType})` : ''}`).join('、')}
                                                       </div>
                                                     )}
-                                                    {taskItems.slice(0, isExpanded ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
+                                                    {taskItems.slice(0, expandedDayDate === day.date ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
                                                       <div key={item.id} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
                                                         <input type="checkbox" checked={selectedTaskIds.includes(item.taskId)} onChange={(e)=>{e.stopPropagation(); toggleSelectTask(item.taskId);}} className={`w-2.5 h-2.5 rounded border-gray-300 cursor-pointer flex-shrink-0 ${isViewer?'hidden':''}`} />
                                                         {item.status === 'cancelled' && <SvgIcon name="slash" className="w-2 h-2 text-red-500 absolute right-1 opacity-70" />}
                                                         <span className="truncate">{item.time} {item.name}</span>
                                                       </div>
                                                     ))}
-                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
+                                                    {expandedDayDate !== day.date && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div onClick={()=>setExpandedDayDate(day.date)} className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm cursor-pointer hover:bg-blue-200/70">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項 ▼</div>}
+                                                    {expandedDayDate === day.date && <div onClick={()=>setExpandedDayDate(null)} className="text-[11px] text-gray-500 font-black text-center mt-0.5 bg-gray-100/70 py-0.5 rounded cursor-pointer hover:bg-gray-200">▲ 收合</div>}
                                                   </div>
                                                 </div>
                                               )
