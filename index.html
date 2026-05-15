@@ -383,12 +383,21 @@ if (!db) return;
                     // 3. Firestore 有帳號但本地沒有 → 補入
                     const merged = fsList.map(fa => {
                       const la = localList.find(a => a.username === fa.username);
-                      if (la && la.passwordHash) {
-                        // 本地有密碼，保留本地密碼；如果 Firestore 沒有密碼則需回寫
-                        if (!fa.passwordHash) needWriteBack = true;
-                        return {...fa, passwordHash: la.passwordHash};
+                      if (!la) return fa; // 只有FS有的帳號，直接用FS
+                      // Firestore 是真相來源：
+                      // FS 有密碼 → 用FS密碼（可能是其他電腦設的）
+                      // FS 是 null → 密碼已被重設 → 清空本地密碼
+                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
+                      if (!fa.passwordHash && la.passwordHash) {
+                        // 本地有密碼但FS沒有：可能是本電腦設的但還沒同步
+                        // 只在「自己的帳號」時才回寫，避免覆蓋重設
+                        const curAcc = getSession();
+                        if (curAcc && curAcc.username === fa.username) {
+                          needWriteBack = true;
+                          return {...fa, passwordHash: la.passwordHash};
+                        }
+                        return fa; // 別人的帳號：FS說null就是null（已被重設）
                       }
-                      if (!la && fa.passwordHash) return fa; // 只有FS有的帳號
                       return fa;
                     });
 
@@ -444,12 +453,17 @@ if (!db) return;
                   if ((snap.exists===true||!!snap.exists) && snap.data && snap.data() && snap.data().list) {
                     const fsList = snap.data().list;
                     const localList = getAccounts();
-                    // 合併保留本地密碼
+                    // Firestore 是真相來源
                     const merged = fsList.map(fa => {
                       const la = localList.find(a => a.username === fa.username);
-                      if (la && la.passwordHash && !fa.passwordHash) return {...fa, passwordHash: la.passwordHash};
-                      if (la && la.passwordHash) return {...fa, passwordHash: la.passwordHash};
-                      return fa;
+                      if (!la) return fa;
+                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
+                      // FS是null：只有自己帳號才回寫（否則代表被重設）
+                      const curAcc = getSession();
+                      if (la.passwordHash && curAcc && curAcc.username === fa.username) {
+                        return {...fa, passwordHash: la.passwordHash};
+                      }
+                      return fa; // 被重設了，清空
                     });
                     saveAccounts(merged); setAccList(merged);
                     // 即時更新當前登入者的角色
@@ -1431,10 +1445,17 @@ if (!db) return;
                   const fsSnap = await getDoc(doc(db,...FS_ACCS_PATH));
                   if((fsSnap.exists===true||!!fsSnap.exists) && fsSnap.data && fsSnap.data().list) {
                     const fsList = fsSnap.data().list;
-                    // 合併：Firestore 角色優先，本地密碼保留
+                    // Firestore 是真相來源（角色和密碼都用FS）
+                    // 只有「自己帳號」且FS無密碼時，才用本地密碼
                     accs = fsList.map(fa=>{
                       const la=accs.find(a=>a.username===fa.username);
-                      return la && la.passwordHash ? {...fa,passwordHash:la.passwordHash} : fa;
+                      if (!la) return fa;
+                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
+                      // FS無密碼：只有登入者自己的帳號才保留本地密碼
+                      if (la.passwordHash && fa.username === loginForm.username) {
+                        return {...fa, passwordHash: la.passwordHash};
+                      }
+                      return fa; // 其他人被重設了
                     });
                     saveAccounts(accs); setAccList(accs);
                   }
