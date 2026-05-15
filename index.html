@@ -1425,7 +1425,20 @@ if (!db) return;
                 return role;
               };
               const doLogin = async () => {
-                const accs = getAccounts();
+                // 先從 Firestore 讀最新帳號（取得最新角色）
+                let accs = getAccounts();
+                try {
+                  const fsSnap = await getDoc(doc(db,...FS_ACCS_PATH));
+                  if((fsSnap.exists===true||!!fsSnap.exists) && fsSnap.data && fsSnap.data().list) {
+                    const fsList = fsSnap.data().list;
+                    // 合併：Firestore 角色優先，本地密碼保留
+                    accs = fsList.map(fa=>{
+                      const la=accs.find(a=>a.username===fa.username);
+                      return la && la.passwordHash ? {...fa,passwordHash:la.passwordHash} : fa;
+                    });
+                    saveAccounts(accs); setAccList(accs);
+                  }
+                } catch(e){}
                 const found = accs.find(a => a.username === loginForm.username);
                 if (!found) { setLoginForm(p=>({...p,error:'請先選擇使用者。'})); return; }
                 if (!loginForm.password) { setLoginForm(p=>({...p,error:'請輸入密碼。'})); return; }
