@@ -403,6 +403,18 @@ if (!db) return;
                     saveAccounts(merged);
                     setAccList(merged);
 
+                    // 如果目前登入者的角色在 Firestore 有更新 → 同步更新 session
+                    const curAcc = getSession();
+                    if (curAcc) {
+                      const updatedAcc = merged.find(a => a.username === curAcc.username);
+                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
+                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
+                        const newSession = {...curAcc, role: fixedRole};
+                        setCurrentAccount(newSession);
+                        saveSession(newSession);
+                      }
+                    }
+
                     // 有需要回寫（本地有密碼但FS沒有）→ 同步到 Firestore
                     if (needWriteBack) {
                       setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
@@ -423,10 +435,36 @@ if (!db) return;
                 } catch(e) { /* 帳號寫入失敗 */ }
               };
 
-              // 頁面載入時立即從 Firestore 讀取帳號
+              // 即時監聽帳號變化（角色更動立即生效）
               useEffect(() => {
                 if (!db) return;
                 loadAccountsFromFS();
+                // 監聽帳號文件變化
+                const unsubAccs = onSnapshot(doc(db,...FS_ACCS_PATH), (snap) => {
+                  if ((snap.exists===true||!!snap.exists) && snap.data && snap.data() && snap.data().list) {
+                    const fsList = snap.data().list;
+                    const localList = getAccounts();
+                    // 合併保留本地密碼
+                    const merged = fsList.map(fa => {
+                      const la = localList.find(a => a.username === fa.username);
+                      if (la && la.passwordHash && !fa.passwordHash) return {...fa, passwordHash: la.passwordHash};
+                      if (la && la.passwordHash) return {...fa, passwordHash: la.passwordHash};
+                      return fa;
+                    });
+                    saveAccounts(merged); setAccList(merged);
+                    // 即時更新當前登入者的角色
+                    const curAcc = getSession();
+                    if (curAcc) {
+                      const updatedAcc = merged.find(a => a.username === curAcc.username);
+                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
+                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
+                        const newSession = {...curAcc, role: fixedRole};
+                        setCurrentAccount(newSession); saveSession(newSession);
+                      }
+                    }
+                  }
+                }, ()=>{});
+                return () => unsubAccs();
               }, []);
 
               // Firebase 監聽 (雲端資料覆蓋本地)
