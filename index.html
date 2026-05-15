@@ -2065,7 +2065,7 @@ if (!db) return;
                                     {calendarWeeks.map((week, wIdx) => {
                                         const isExpanded = expandedWeekIdx === wIdx;
                                         return (
-                                          <div key={wIdx} className={`grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded?'h-auto':'min-h-[160px]'}`}>
+                                          <div key={wIdx} className={`relative grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded?'h-auto':'min-h-[160px]'}`}>{isExpanded&&<button onClick={(e)=>{e.stopPropagation();setExpandedWeekIdx(null);}} className="absolute top-0 right-0 z-30 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-bl cursor-pointer hover:bg-blue-700 no-print">▲ 收合</button>}
                                             {week.map((day, dIdx) => {
                                               const availCount = getAvailableFieldCount(day.date);
                                               let dayTasks = tasks.filter(t => t.date === day.date);
@@ -2086,8 +2086,8 @@ if (!db) return;
                                                      onClick={(e) => {
                                                        if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='path') return;
                                                        setFormData(prev => ({...prev, startDate: day.date, endDate: day.date}));
-                                                        if(expandedWeekIdx===wIdx)setExpandedWeekIdx(null);
-                                                        else{setExpandedWeekIdx(wIdx);setExpandedDayDate(null);}
+                                                        // 點格子只設定日期
+                                                        if(expandedWeekIdx!==wIdx)setExpandedWeekIdx(wIdx);
 
                                                      }}
                                                      className={`p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors flex flex-col relative group ${day.currentMonth ? 'bg-white' : 'bg-gray-50/80 text-gray-400'} ${isExpanded ? 'min-h-[250px]' : 'h-full'} ${isToday ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/10' : ''}`}>
@@ -2113,7 +2113,7 @@ if (!db) return;
                                                         <span className="truncate">{item.time} {item.name}</span>
                                                       </div>
                                                     ))}
-                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
+                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div onClick={(e)=>{e.stopPropagation();setExpandedWeekIdx(wIdx);}} className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm cursor-pointer hover:bg-blue-200/70">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項 ▼</div>}
                                                   </div>
                                                 </div>
                                               )
