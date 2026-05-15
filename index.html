@@ -370,21 +370,46 @@
                 if (!db) return;
                 try {
                   const snap = await getDoc(doc(db, ...FS_ACCS_PATH));
+                  const localList = getAccounts();
+
                   if (snap.exists && snap.data() && snap.data().list && snap.data().list.length > 0) {
                     const fsList = snap.data().list;
-                    // 合併：Firestore 有密碼hash就用Firestore，否則用本地
-                    const localList = getAccounts();
+                    let needWriteBack = false;
+
+                    // 合併規則：
+                    // 1. 本地有密碼 → 永遠保留本地密碼（不被 Firestore 覆蓋）
+                    // 2. Firestore 有密碼但本地沒有 → 用 Firestore 的密碼（其他電腦設的）
+                    // 3. Firestore 有帳號但本地沒有 → 補入
                     const merged = fsList.map(fa => {
-                      const la = localList.find(a=>a.username===fa.username);
-                      // 本地有密碼hash但Firestore沒有 → 用本地的（剛設定的密碼）
-                      if(la && la.passwordHash && !fa.passwordHash) return {...fa, passwordHash: la.passwordHash};
+                      const la = localList.find(a => a.username === fa.username);
+                      if (la && la.passwordHash) {
+                        // 本地有密碼，保留本地密碼；如果 Firestore 沒有密碼則需回寫
+                        if (!fa.passwordHash) needWriteBack = true;
+                        return {...fa, passwordHash: la.passwordHash};
+                      }
+                      if (!la && fa.passwordHash) return fa; // 只有FS有的帳號
                       return fa;
                     });
+
+                    // 加入本地有但 Firestore 沒有的帳號
+                    localList.forEach(la => {
+                      if (!merged.find(m => m.username === la.username)) {
+                        merged.push(la);
+                        needWriteBack = true;
+                      }
+                    });
+
                     saveAccounts(merged);
                     setAccList(merged);
-                    // 如果本地有密碼但Firestore沒有，回寫到Firestore
-                    const needSync = merged.some((m,idx)=>m.passwordHash && !fsList[idx]?.passwordHash);
-                    if(needSync) setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
+
+                    // 有需要回寫（本地有密碼但FS沒有）→ 同步到 Firestore
+                    if (needWriteBack) {
+                      setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
+                    }
+                  } else if (localList.length > 0) {
+                    // Firestore 沒有帳號資料，把本地資料推上去
+                    setDoc(doc(db,...FS_ACCS_PATH),{list:localList,updatedAt:new Date().toISOString()}).catch(()=>{});
+                    setAccList(localList);
                   }
                 } catch(e) { console.log('帳號讀取失敗，使用本地資料', e); }
               };
