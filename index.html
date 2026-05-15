@@ -396,7 +396,7 @@
                 }, () => {});
 
                 return () => { unsubTasks(); unsubLeaves(); unsubPersonnel(); unsubCars(); unsubEqs(); };
-              }, [user]);
+              }, [db]);
 
               useEffect(() => {
                 const year = viewDateStr.split('-')[0];
