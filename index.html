@@ -447,18 +447,18 @@
                 }, () => {});
 
                 const unsubPersonnel = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), (s) => {
-                    if (s.exists() && s.data().names) {
+                    if (s.exists && s.data().names) {
                         setPersonnel(s.data().names); setManagers(s.data().managers||[]); setIndoors(s.data().indoors||[]); setShortNames(s.data().shortNames||{}); 
                     } else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: CUSTOM_SORT_ORDER, managers: DEFAULT_MANAGERS, indoors: DEFAULT_INDOORS, shortNames: {} }).catch(()=>{});
                 }, () => {});
 
                 const unsubCars = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), (s) => {
-                    if (s.exists() && s.data().list) setCars(s.data().list);
+                    if (s.exists && s.data().list) setCars(s.data().list);
                     else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: DEFAULT_CARS }).catch(()=>{});
                 }, () => {});
 
                 const unsubEqs = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), (s) => {
-                    if (s.exists() && s.data().list) {
+                    if (s.exists && s.data().list) {
                         const parsedList = (s.data().list || []).filter(item => item !== null && item !== undefined).map(item => typeof item === 'string' ? { name: item, category: '其他' } : { name: safeStr(item?.name||item), category: safeStr(item?.category||'其他') });
                         setCustomEqsList(parsedList);
                     } else {
@@ -685,6 +685,7 @@
               };
 
               const editTask = (task) => {
+                console.log('[editTask] attendees:', task.attendees, 'personnel:', personnel.slice(0,3));
                 setActiveTab('task');
                 const { date, ...restTask } = task;
                 setFormData({ timeSlot: '自動判定', status: 'active', cancelReason: '', ...restTask, startDate: date, endDate: date });
@@ -1153,6 +1154,7 @@
                       <div className="flex flex-wrap gap-1.5">
                         {personnel.map(p => {
                           const isSelected = (currentData?.attendees || []).includes(p);
+                          if(p===personnel[0]) console.log('[isSelected] p=',p,'attendees=',currentData?.attendees,'isSelected=',isSelected);
                           const targetDate = isOverrideMode ? overrideModal.date : formData.startDate;
                           const isOnLeave = leaves.some(l => safeStr(l?.date) === targetDate && safeStr(l?.person) === p);
                           const status = busyData?.staff?.[p] || { morning: false, afternoon: false };
