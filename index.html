@@ -2161,7 +2161,7 @@ if (!db) return;
                                                 <div key={dIdx} 
                                                      onClick={(e) => {
                                                        if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='path') return;
-                                                       setFormData(prev => ({...prev, startDate: day.date, endDate: day.date}));
+                                                       setFormData(prev => ({...prev, startDate: day.date, endDate: day.date, households: '', notes: '', eqTheodolite: '', eqLevel: '', projectName: '', attendees: [], cars: []}));
                                                         // 點格子只設定日期
                                                         if(expandedWeekIdx!==wIdx)setExpandedWeekIdx(wIdx);
 
