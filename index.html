@@ -1327,17 +1327,15 @@
                 const email = toEmail(found.username);
                 if (found.passwordHash === null) {
                   if (loginForm.password.length < 6) { setLoginForm(p=>({...p,error:'首次登入，請設定至少 6 碼密碼。'})); return; }
-                  try {
-                    let fbUser;
-                    try { const c=await createUserWithEmailAndPassword(auth,email,loginForm.password); fbUser=c.user; }
-                    catch(e) { if(e.code==='auth/email-already-in-use'){const c=await signInWithEmailAndPassword(auth,email,loginForm.password);fbUser=c.user;}else throw e; }
-                    await saveUserRole(fbUser.uid, found.role, found.displayName);
-                    const _fixedR=getFixedRole(found.displayName,found.username,found.role);
-                    const loggedIn={...found,id:fbUser.uid,passwordHash:'set',role:_fixedR,email};
-                    const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
-                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
-                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
-                  } catch(err) { setLoginForm(p=>({...p,error:'建立帳號失敗：'+(err.message||err.code)})); }
+                  // 純本地 hash 驗證，不依賴 Firebase Auth
+                  const pwHash=hashPw(loginForm.password);
+                  const _fixedR=getFixedRole(found.displayName,found.username,found.role);
+                  const loggedIn={...found,passwordHash:pwHash,role:_fixedR,email};
+                  const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
+                  saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                  setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  // Firebase Auth 背景嘗試（失敗不影響登入）
+                  try { createUserWithEmailAndPassword(auth,email,loginForm.password).catch(()=>{}); } catch(e){}
                 } else {
                   try {
                     const c=await signInWithEmailAndPassword(auth,email,loginForm.password);
