@@ -1499,7 +1499,7 @@ if (!db) return;
               const doResetPassword = async (acc) => {
                 if(!window.confirm(`確定要重設「${acc.displayName}」的密碼？\n對方下次登入時可自行設定新密碼。`)) return;
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,passwordHash:null}:a);
-                saveAccounts(upd); setAccList(upd);
+                saveAccountsToFS(upd);
                 logAction('重設密碼',`${acc.displayName}`);
                 showAlert('重設完成',`已重設「${acc.displayName}」的密碼，對方下次登入時可設定新密碼。`);
               };
@@ -1510,9 +1510,8 @@ if (!db) return;
                 }
                 if(acc.id===currentAccount?.id&&newRole!=='superadmin'){alert('不能降低自己的最高管理員權限！');return;}
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,role:newRole}:a);
-                saveAccounts(upd); setAccList(upd);
+                saveAccountsToFS(upd); // ← 同步到 Firestore，所有人立即生效
                 if(acc.id===currentAccount?.id){const newAcc={...currentAccount,role:newRole};setCurrentAccount(newAcc);saveSession(newAcc);}
-                if(db&&acc.id&&!acc.id.startsWith('u_')) saveUserRole(acc.id,newRole,acc.displayName).catch(()=>{});
                 logAction('角色變更',`${acc.displayName}: ${ROLE_LABELS[acc.role]||acc.role} → ${ROLE_LABELS[newRole]||newRole}`);
                 setEditRoleTarget(null);
               };
