@@ -310,6 +310,7 @@
 
               const [user, setUser] = useState(null);
               const [dbConnected, setDbConnected] = useState(false);
+              const [dbReady, setDbReady] = useState(!!db); // db 是否已初始化
               const [activeTab, setActiveTab] = useState('task');
               const [editingTaskId, setEditingTaskId] = useState(null);
               const [editingLeaveId, setEditingLeaveId] = useState(null);
@@ -384,15 +385,15 @@
                 } catch(e) { console.log('帳號寫入Firestore失敗', e); }
               };
 
-              // 頁面載入時立即從 Firestore 讀取帳號（不等 Firebase Auth）
+              // 頁面載入時立即從 Firestore 讀取帳號
               useEffect(() => {
                 if (!db) return;
                 loadAccountsFromFS();
-              }, [db]);
+              }, []);
 
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
-                if (!db) return;
+                if (!db) { console.warn("db not ready"); return; }
                 setDbConnected(true);
 
                 const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
@@ -424,7 +425,7 @@
                 }, () => {});
 
                 return () => { unsubTasks(); unsubLeaves(); unsubPersonnel(); unsubCars(); unsubEqs(); };
-              }, [db]);
+              }, []);
 
               useEffect(() => {
                 const year = viewDateStr.split('-')[0];
