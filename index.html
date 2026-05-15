@@ -95,7 +95,7 @@
     <script type="text/babel">
         const initApp = () => {
             const { useState, useMemo, useEffect, Fragment } = React;
-            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
+            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
 
             // --- 雙重防丟失：安全的本地儲存存取 ---
             const safeSetStorage = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
