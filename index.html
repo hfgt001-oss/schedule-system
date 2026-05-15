@@ -362,6 +362,34 @@
                 return onAuthStateChanged(auth, setUser);
               }, []);
 
+              // ===== Firestore 帳號同步 =====
+              const FS_ACCS_PATH = ['artifacts', appId, 'public', 'data', 'settings', 'accounts'];
+
+              const loadAccountsFromFS = async () => {
+                if (!db) return;
+                try {
+                  const snap = await getDoc(doc(db, ...FS_ACCS_PATH));
+                  if (snap.exists && snap.data() && snap.data().list && snap.data().list.length > 0) {
+                    saveAccounts(snap.data().list);
+                    setAccList(snap.data().list);
+                  }
+                } catch(e) { console.log('帳號讀取失敗，使用本地資料', e); }
+              };
+
+              const saveAccountsToFS = async (accs) => {
+                saveAccounts(accs); setAccList(accs);
+                if (!db) return;
+                try {
+                  await setDoc(doc(db, ...FS_ACCS_PATH), {list: accs, updatedAt: new Date().toISOString()});
+                } catch(e) { console.log('帳號寫入Firestore失敗', e); }
+              };
+
+              // 頁面載入時立即從 Firestore 讀取帳號（不等 Firebase Auth）
+              useEffect(() => {
+                if (!db) return;
+                loadAccountsFromFS();
+              }, [db]);
+
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
                 if (!db) return;
@@ -1332,7 +1360,7 @@
                   const _fixedR=getFixedRole(found.displayName,found.username,found.role);
                   const loggedIn={...found,passwordHash:pwHash,role:_fixedR,email};
                   const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
-                  saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                  saveAccountsToFS(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
                   setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
                   // Firebase Auth 背景嘗試（失敗不影響登入）
                   try { createUserWithEmailAndPassword(auth,email,loginForm.password).catch(()=>{}); } catch(e){}
@@ -1367,7 +1395,7 @@
                   const c=await createUserWithEmailAndPassword(auth,toEmail(newAccForm.username.trim()),newAccForm.password);
                   await saveUserRole(c.user.uid,newAccForm.role,newAccForm.displayName.trim());
                   const na={id:c.user.uid,username:newAccForm.username.trim(),displayName:newAccForm.displayName.trim(),role:newAccForm.role,passwordHash:'set',email:toEmail(newAccForm.username.trim()),createdAt:new Date().toISOString()};
-                  const upd=[...accs,na]; saveAccounts(upd); setAccList(upd);
+                  const upd=[...accs,na]; saveAccountsToFS(upd);
                   setNewAccForm({username:'',displayName:'',role:'editor',password:'',confirm:''}); setNewAccError(''); setAccMgrTab('list');
                 } catch(err){ setNewAccError(err.code==='auth/email-already-in-use'?'帳號已存在。':'建立失敗：'+(err.message||err.code)); }
               };
@@ -1375,7 +1403,7 @@
               const doDeleteAccount = async (id) => {
                 if(id===currentAccount?.id){alert('不能刪除自己！');return;}
                 if(db) await setDoc(doc(db,'artifacts',appId,'public','data','userRoles',id),{role:'disabled'},{merge:true}).catch(()=>{});
-                const upd=getAccounts().filter(a=>a.id!==id); saveAccounts(upd); setAccList(upd);
+                const upd=getAccounts().filter(a=>a.id!==id); saveAccountsToFS(upd);
               };
 
               const doResetPassword = async (acc) => {
@@ -1403,7 +1431,7 @@
                 const accs=[...accList],idx=accs.findIndex(a=>a.id===id);
                 if(idx<0||(dir==='up'&&idx===0)||(dir==='down'&&idx===accs.length-1))return;
                 const sw=dir==='up'?idx-1:idx+1;[accs[idx],accs[sw]]=[accs[sw],accs[idx]];
-                saveAccounts(accs);setAccList(accs);
+                saveAccountsToFS(accs);
               };
               // ===== 登入頁面 =====
               if (loginPage) return (
