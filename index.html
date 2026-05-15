@@ -2065,7 +2065,7 @@ if (!db) return;
                                     {calendarWeeks.map((week, wIdx) => {
                                         const isExpanded = expandedWeekIdx === wIdx;
                                         return (
-                                          <div key={wIdx} className={`grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded ? 'h-auto' : 'min-h-[160px]'}`}>
+                                          <div key={wIdx} className={`grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded?'h-auto':'min-h-[160px]'}`}>
                                             {week.map((day, dIdx) => {
                                               const availCount = getAvailableFieldCount(day.date);
                                               let dayTasks = tasks.filter(t => t.date === day.date);
@@ -2086,9 +2086,9 @@ if (!db) return;
                                                      onClick={(e) => {
                                                        if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='path') return;
                                                        setFormData(prev => ({...prev, startDate: day.date, endDate: day.date}));
-                                                       setActiveTab('task');
-                                                       if (expandedWeekIdx === wIdx && formData.startDate === day.date) setExpandedWeekIdx(null);
-                                                       else setExpandedWeekIdx(wIdx);
+                                                        if(expandedWeekIdx===wIdx)setExpandedWeekIdx(null);
+                                                        else{setExpandedWeekIdx(wIdx);setExpandedDayDate(null);}
+
                                                      }}
                                                      className={`p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors flex flex-col relative group ${day.currentMonth ? 'bg-white' : 'bg-gray-50/80 text-gray-400'} ${isExpanded ? 'min-h-[250px]' : 'h-full'} ${isToday ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/10' : ''}`}>
                                                   <div className="flex justify-between items-start mb-1 flex-shrink-0 relative z-10">
@@ -2100,21 +2100,20 @@ if (!db) return;
                                                     </div>
                                                     {!searchQuery && <span className={`text-[8px] px-1 py-0.5 rounded font-black shadow-sm border ${availCount >= 3 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : availCount > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-100 text-red-700 border-red-200'}`}>剩{availCount}</span>}
                                                   </div>
-                                                  <div className={`flex-1 space-y-0.5 custom-scrollbar relative z-10 ${expandedDayDate === day.date ? 'overflow-y-auto max-h-[200px] pr-0.5 pb-1' : 'overflow-hidden'}`}>
+                                                  <div className={`flex-1 space-y-0.5 relative z-10 ${isExpanded?'overflow-visible':'overflow-hidden'}`}>
                                                     {dayLeaves.length > 0 && (
                                                       <div className="text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm bg-red-50 text-red-800 border-red-200 break-words line-clamp-2">
                                                           [假] {dayLeaves.map(l => `${getPrintName(l.person)}${l.leaveType !== '全天' ? `(${l.leaveType})` : ''}`).join('、')}
                                                       </div>
                                                     )}
-                                                    {taskItems.slice(0, expandedDayDate === day.date ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
+                                                    {taskItems.slice(0, isExpanded ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
                                                       <div key={item.id} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
                                                         <input type="checkbox" checked={selectedTaskIds.includes(item.taskId)} onChange={(e)=>{e.stopPropagation(); toggleSelectTask(item.taskId);}} className={`w-2.5 h-2.5 rounded border-gray-300 cursor-pointer flex-shrink-0 ${isViewer?'hidden':''}`} />
                                                         {item.status === 'cancelled' && <SvgIcon name="slash" className="w-2 h-2 text-red-500 absolute right-1 opacity-70" />}
                                                         <span className="truncate">{item.time} {item.name}</span>
                                                       </div>
                                                     ))}
-                                                    {expandedDayDate !== day.date && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div onClick={()=>setExpandedDayDate(day.date)} className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm cursor-pointer hover:bg-blue-200/70">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項 ▼</div>}
-                                                    {expandedDayDate === day.date && <div onClick={()=>setExpandedDayDate(null)} className="text-[11px] text-gray-500 font-black text-center mt-0.5 bg-gray-100/70 py-0.5 rounded cursor-pointer hover:bg-gray-200">▲ 收合</div>}
+                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
                                                   </div>
                                                 </div>
                                               )
