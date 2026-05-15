@@ -239,9 +239,9 @@
 
               return (
                 <div className="relative w-full">
-                  <input type="text" name={name} value={value} 
+                  <input type="text" name={name} value={value} autoComplete="off"
                          onChange={e => { onChange(e); setShow(true); }} 
-                         onFocus={() => setShow(true)}
+                         onFocus={(e) => { e.target.setAttribute('autoComplete','off'); setShow(true); }}
                          onBlur={() => setTimeout(() => setShow(false), 200)} 
                          placeholder={placeholder} className="w-full border-2 p-2 rounded-lg outline-none font-bold focus:border-blue-500 text-base" required={required} autoComplete="off" />
                   {show && filtered.length > 0 && (
@@ -1819,10 +1819,10 @@ if (!db) return;
                                     </div>
                                     <div className="grid grid-cols-4 gap-3">
                                       <div className="col-span-2"><label className="text-xs font-bold text-gray-500 mb-1 block">案名</label><AutocompleteInput name="projectName" value={formData.projectName} onChange={changeFd} options={uniqueProjectNames} placeholder="輸入案名" required /></div>
-                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="text" name="households" autoComplete="off" type="search" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
+                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="text" name="gt_households_x" autoComplete="new-password" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
                                       <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">項目</label><select name="itemType" value={formData.itemType} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white">{ITEM_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
                                     </div>
-                                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">備註</label><input type="text" name="notes" autoComplete="off" type="search" value={formData.notes} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-medium focus:border-blue-500" placeholder="例: 114鑑443 或 1(負責人)"/></div>
+                                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">備註</label><input type="text" name="gt_notes_x" autoComplete="new-password" value={formData.notes} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-medium focus:border-blue-500" placeholder="例: 114鑑443 或 1(負責人)"/></div>
                                     
                                     {renderFormContent(formData, changeFd, toggleAtt, toggleCr, toggleEq, busyDataForForm, false)}
                                     
