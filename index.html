@@ -81,7 +81,7 @@
                 signInWithEmailAndPassword: function(auth,e,p){ return auth.signInWithEmailAndPassword(e,p); },
                 fbSignOut: function(auth){ return auth.signOut(); },
                 getFirestore: function(app){ return firebase.firestore(app); },
-                collection: function(db,col){ return db.collection(col); },
+                collection: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.collection(a.join('/')); },
                 doc: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.doc(a.join('/')); },
                 getDoc: function(ref){ return ref.get(); },
                 setDoc: function(ref,data,opts){ return (opts&&opts.merge)?ref.set(data,{merge:true}):ref.set(data); },
@@ -367,10 +367,13 @@
               const FS_ACCS_PATH = ['artifacts', appId, 'public', 'data', 'settings', 'accounts'];
 
               const loadAccountsFromFS = async () => {
-                if (!db) return;
+                console.log("[FS] loadAccountsFromFS 開始, db=", !!db);
+                if (!db) { console.log("[FS] db 不存在，略過"); return; }
                 try {
                   const snap = await getDoc(doc(db, ...FS_ACCS_PATH));
+                  console.log("[FS] snap.exists=", snap.exists, "snap.data()=", snap.data && snap.data());
                   const localList = getAccounts();
+                  console.log("[FS] 本地帳號數=", localList.length);
 
                   if (snap.exists && snap.data() && snap.data().list && snap.data().list.length > 0) {
                     const fsList = snap.data().list;
@@ -411,15 +414,16 @@
                     setDoc(doc(db,...FS_ACCS_PATH),{list:localList,updatedAt:new Date().toISOString()}).catch(()=>{});
                     setAccList(localList);
                   }
-                } catch(e) { console.log('帳號讀取失敗，使用本地資料', e); }
+                } catch(e) { console.error("[FS] 帳號讀取失敗:", e); }
               };
 
               const saveAccountsToFS = async (accs) => {
                 saveAccounts(accs); setAccList(accs);
-                if (!db) return;
+                console.log("[FS] saveAccountsToFS 開始, db=", !!db, "帳號數=", accs.length);
+                if (!db) { console.log("[FS] db 不存在，略過"); return; }
                 try {
                   await setDoc(doc(db, ...FS_ACCS_PATH), {list: accs, updatedAt: new Date().toISOString()});
-                } catch(e) { console.log('帳號寫入Firestore失敗', e); }
+                } catch(e) { console.error("[FS] 帳號寫入失敗:", e); }
               };
 
               // 頁面載入時立即從 Firestore 讀取帳號
