@@ -364,7 +364,7 @@
 
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
-                if (!user || !db) return;
+                if (!db) return;
                 setDbConnected(true);
 
                 const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
@@ -467,7 +467,7 @@
                           if (importedData.customEqsList) setCustomEqsList(importedData.customEqsList);
 
                           // 同步到雲端
-                          if (db && user) {
+                          if (db) {
                               for(const t of importedData.tasks||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{});
                               for(const l of importedData.leaves||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(()=>{});
                               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: importedData.personnel||CUSTOM_SORT_ORDER, managers: importedData.managers||DEFAULT_MANAGERS, indoors: importedData.indoors||DEFAULT_INDOORS, shortNames: importedData.shortNames||{} }, {merge:true}).catch(()=>{});
@@ -535,7 +535,7 @@
               const deleteTask = async (id) => {
                 setTasks(prev => prev.filter(x => x.id !== id));
                 setSelectedTaskIds(prev => prev.filter(x => x !== id));
-                if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e));
+                if (db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e));
               };
 
               const resetFd = () => { setFormData(prev => ({startDate: prev.startDate, endDate: prev.endDate, time: '0900', timeSlot: '自動判定', projectName: '', households: '', itemType: '鑑定', notes: '', eqTheodolite: '', eqLevel: '', attendees: [], cars: [], customEqs: [], groupId: '', status: 'active', cancelReason: ''})); setDailyOverrides({}); setEditingTaskId(null); };
@@ -547,7 +547,7 @@
                 setTasks(prev => { const filtered = editingTaskId ? prev.filter(t => t.id !== editingTaskId) : prev; return [...filtered, ...nT]; });
                 logAction(editingTaskId?'更新行程':'新增行程',`${bData.projectName||''} ${dates[0]||''}`); setEditingTaskId(null); setViewDateStr(dates[0]); resetFd();
 
-                if (db && user) { for(const t of nT) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{}); }
+                if (db) { for(const t of nT) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{}); }
               };
 
               const handleTaskSubmit = async (e) => {
@@ -557,7 +557,7 @@
                    return showConfirm('連動更新確認', '行程屬「連續群組」。\n[連動更新]：同步更新群組所有行程\n[僅更新當日]：只修改這天', async () => {
                       setTasks(prev => prev.map(t => t.groupId === formData.groupId ? { ...bData, date: t.date, groupId: formData.groupId, id: t.id } : t));
                       setViewDateStr(formData.startDate); setEditingTaskId(null); resetFd();
-                      if (db && user) for(const gt of tasks.filter(t=>t.groupId===formData.groupId)) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(gt.id)), {...bData, date:gt.date, groupId:formData.groupId, id:gt.id});
+                      if (db) for(const gt of tasks.filter(t=>t.groupId===formData.groupId)) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(gt.id)), {...bData, date:gt.date, groupId:formData.groupId, id:gt.id});
                    }, () => submitSingleOrNew(dates, bData), '連動更新', '僅更新當日');
                 }
                 submitSingleOrNew(dates, bData);
@@ -579,7 +579,7 @@
                   setSelectedTaskIds(prev => prev.filter(x => !idsToDelete.includes(x)));
                   setDeleteGroupModal({ isOpen: false, groupId: null, dates: [] });
 
-                  if (db && user) {
+                  if (db) {
                       for (const id of idsToDelete) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
                   }
               };
@@ -588,7 +588,7 @@
               const handleBatchDelete = () => {
                   showConfirm('確認批次刪除', `確定要刪除這 ${selectedTaskIds.length} 筆行程嗎？刪除後無法復原。`, async () => {
                       setTasks(prev => prev.filter(x => !selectedTaskIds.includes(x.id)));
-                      if (db && user) {
+                      if (db) {
                           for (const id of selectedTaskIds) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
                       }
                       setSelectedTaskIds([]);
@@ -597,7 +597,7 @@
 
               const handleBatchSubmit = async () => {
                   setTasks(prev => prev.map(t => selectedTaskIds.includes(t.id) ? { ...t, ...batchData, car: '' } : t));
-                  if (db && user) {
+                  if (db) {
                       for (const id of selectedTaskIds) {
                           const t = tasks.find(x => x.id === id);
                           if (t) {
@@ -643,7 +643,7 @@
                 logAction(_isEditLeave?'更新請假':'新增請假',`${leaveFormData.person} ${leaveFormData.startDate}`); setEditingLeaveId(null); setViewDateStr(dates[0]);
                 setLeaveFormData(prev => ({ ...prev, person: '', leaveType: '全天', leaveCategory: '特休', leaveNotes: '' }));
 
-                if (db && user) {
+                if (db) {
                     for (const l of newLeaves) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(e=>console.error(e)); }
                 }
               };
@@ -653,7 +653,7 @@
                   const target=leaves.find(l=>l.id===id);
                   if(target)logAction('刪除請假',`${target.person} ${target.date||target.startDate||''} 請假`);
                   setLeaves(prev => prev.filter(l => l.id !== id));
-                  if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(id))).catch(e=>console.error(e));
+                  if (db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(id))).catch(e=>console.error(e));
                 });
               };
 
@@ -670,7 +670,7 @@
                   const nPs = [...personnel, name]; const nMs = newEmp.job === 'manager' ? [...managers, name] : managers; const nIs = newEmp.job === 'indoor' ? [...indoors, name] : indoors;
                   setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
 
-                  if (db && user) {
+                  if (db) {
                       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
                   }
                   setNewEmp({ n: '', job: 'field' });
@@ -681,7 +681,7 @@
                       const nPs = personnel.filter(p => p !== n); const nMs = managers.filter(p => p !== n); const nIs = indoors.filter(p => p !== n);
                       setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
 
-                      if (db && user) {
+                      if (db) {
                           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
                       }
                   });
@@ -690,7 +690,7 @@
               const updateShortName = async (person, newShortName) => {
                   const updatedShortNames = { ...shortNames, [person]: newShortName };
                   setShortNames(updatedShortNames);
-                  if (db && user) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { shortNames: updatedShortNames }, { merge: true }).catch(e=>console.error(e)); }
+                  if (db) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { shortNames: updatedShortNames }, { merge: true }).catch(e=>console.error(e)); }
               };
 
               const getPrintName = (fullName) => {
@@ -705,7 +705,7 @@
                   const addedCarName = newCarName.trim();
                   const newCars = [...cars, addedCarName];
                   setCars(newCars);
-                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                  if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
                   setNewCarName('');
                 }
               };
@@ -713,7 +713,7 @@
               const handleDeleteCar = async (carToDelete) => {
                 const newCars = cars.filter(c => c !== carToDelete);
                 setCars(newCars);
-                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
                 if (formData.car === carToDelete) setFormData(prev => ({ ...prev, car: '' }));
                 if ((formData.cars || []).includes(carToDelete)) setFormData(prev => ({ ...prev, cars: (prev.cars || []).filter(c => c !== carToDelete) }));
               };
@@ -723,7 +723,7 @@
                 if (name && !customEqsList.some(eq => eq && safeStr(eq.name) === name)) {
                   const newEqs = [...customEqsList, { name, category }];
                   setCustomEqsList(newEqs);
-                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                  if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
                   setNewEqName(''); setNewEqCat(''); 
                 }
               };
@@ -731,7 +731,7 @@
               const handleDeleteEq = async (eqNameToDelete) => {
                 const newEqs = customEqsList.filter(e => e && safeStr(e.name) !== eqNameToDelete);
                 setCustomEqsList(newEqs);
-                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
                 if ((formData.customEqs || []).includes(eqNameToDelete)) setFormData(prev => ({ ...prev, customEqs: (prev.customEqs || []).filter(e => e !== eqNameToDelete) }));
               };
 
@@ -1976,7 +1976,7 @@
                                               <button onClick={()=>{
                                                 const done=!task.siteVisitDone;
                                                 setTasks(prev=>prev.map(t=>t.id===task.id?{...t,siteVisitDone:done}:t));
-                                                if(db&&user)setDoc(doc(db,'artifacts',appId,'public','data','tasks',String(task.id)),{...task,siteVisitDone:done}).catch(()=>{});
+                                                if(db)setDoc(doc(db,'artifacts',appId,'public','data','tasks',String(task.id)),{...task,siteVisitDone:done}).catch(()=>{});
                                               }} className={`p-1 rounded border text-xs font-bold flex items-center gap-0.5 ${task.siteVisitDone?'bg-green-100 text-green-700 border-green-300':'bg-white text-gray-400 border-gray-200'}`} title="會勘完成"><SvgIcon name="check" className="w-3.5 h-3.5"/>{task.siteVisitDone?'完成':'會勘'}</button>
                                                                                             <button onClick={()=>copyTask(task)} className="p-1 text-emerald-600 bg-white hover:bg-emerald-50 rounded border border-emerald-200 shadow-sm" title="複製"><SvgIcon name="copy" className="w-3.5 h-3.5" /></button>
                                               <button onClick={()=>editTask(task)} className="p-1 text-blue-600 bg-white hover:bg-blue-50 rounded border border-blue-200 shadow-sm" title="編輯"><SvgIcon name="edit" className="w-3.5 h-3.5" /></button>
