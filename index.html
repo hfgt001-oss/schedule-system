@@ -24,11 +24,12 @@
         /* 全局表格樣式：保證預覽與列印排版 100% 同步 */
         .ptb {border-collapse:collapse;width:100%;}
         @media print {
-          .ptb th, .ptb td { font-size:9px !important; padding:1px 2px !important; line-height:1.2 !important; }
-          .ptb { font-size:9px !important; }
+          .ptb, .ptb th, .ptb td { font-size:11px !important; padding:1px 3px !important; line-height:1.3 !important; }
           .ptb tr { page-break-inside: avoid; }
-          /* 週表行程頁強制縮小所有文字 */
-          .print-week-table * { font-size:9px !important; line-height:1.2 !important; }
+          .print-week-table, .print-week-table * { font-size:11px !important; line-height:1.3 !important; }
+          .print-week-table td, .print-week-table th { padding:1px 3px !important; }
+          .print-week-table { border-collapse: collapse !important; width:100% !important; }
+          @page { size: A4 portrait; margin: 8mm; }
         }
         .ptb th, .ptb td {border:1px solid #000;padding:4px;color:#000;font-size:13px;}
         .ptb tr {page-break-inside:avoid;}
@@ -1332,17 +1333,17 @@ if (!db) return;
                   <div className="w-full font-sans text-black">
                           <div className="w-full">
                               <h2 className="text-xl font-black text-center mb-2 whitespace-nowrap" style={{whiteSpace: 'nowrap'}}>外業行程安排 ({formatMinguo(viewWeekDates[0])} ~ {formatMinguo(viewWeekDates[6])})</h2>
-                              <table className="ptb print-week-table w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px'}} cellPadding="2">
-                                  <thead className="bg-gray-200">
-                                      <tr>
-                                          <th className="w-[85px] text-base">日期</th>
-                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FBCFE8' }}>經緯</th>
-                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FEF08A' }}>水準</th>
-                                          <th className="text-left px-2 text-base">案名與工作項目</th>
-                                          <th className="text-base" style={{width:"120px"}}>出勤人員</th>
-                                          <th className="w-[35px] text-xs">出勤<br/>人數</th>
-                                          <th className="w-[55px] text-base">時間</th>
-                                          <th className="w-[80px] text-base">車輛</th>
+                                  <table className="ptb print-week-table w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px',borderCollapse:'collapse'}} cellPadding="1">
+                                  <thead>
+                                      <tr style={{backgroundColor:'#d1d5db'}}>
+                                          <th style={{width:'70px',fontSize:'9px',padding:'2px'}}>日期</th>
+                                          <th style={{width:'28px',fontSize:'9px',backgroundColor:'#fbcfe8',padding:'2px'}}>經緯</th>
+                                          <th style={{width:'28px',fontSize:'9px',backgroundColor:'#fef08a',padding:'2px'}}>水準</th>
+                                          <th style={{fontSize:'9px',padding:'2px',textAlign:'left',paddingLeft:'4px',whiteSpace:'nowrap'}}>案名與工作項目</th>
+                                          <th colSpan={maxAttendees} style={{fontSize:'9px',padding:'2px'}}>人員</th>
+                                          <th style={{width:'28px',fontSize:'9px',padding:'2px'}}>人數</th>
+                                          <th style={{width:'50px',fontSize:'9px',padding:'2px'}}>時間</th>
+                                          <th style={{width:'65px',fontSize:'9px',padding:'2px'}}>車輛</th>
                                       </tr>
                                   </thead>
                                   <tbody>
@@ -1355,33 +1356,33 @@ if (!db) return;
                                           const pMa = managers.filter(m=>m!=='雅淳');
                                           return (
                                               <Fragment key={date}>
-                                                  <tr className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}>
-                                                      <td className="font-black text-base whitespace-nowrap">{shortD}</td>
-                                                      <td colSpan={7} className="text-left font-black text-red-600 px-2 text-base">
+                                                  <tr style={{backgroundColor:'#e5e7eb'}}>
+                                                      <td style={{fontWeight:'900',fontSize:'9px',whiteSpace:'nowrap',padding:'2px',backgroundColor:'#e5e7eb'}}>{shortD}</td>
+                                                      <td colSpan={6+maxAttendees} style={{textAlign:'left',fontWeight:'900',fontSize:'9px',padding:'2px 4px',color:'#b91c1c'}}>
                                                           {pMa.map(getPrintName).join(' ')} {pIn.map(getPrintName).join(' ')}
                                                           {holidays[date] && <span className="ml-2">[{holidays[date]}]</span>}
                                                           {data.leaves.length > 0 && <span className="ml-4">請假名單: {data.leaves.map(l=>`${getPrintName(l.person)}(${l.leaveType})`).join('、')}</span>}
                                                       </td>
                                                   </tr>
-                                                  {data.tasks.length===0 && <tr><td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}/><td colSpan={7} className="text-gray-500 font-bold italic">當日無排班</td></tr>}
+                                                  {data.tasks.length===0 && <tr><td style={{backgroundColor:'#e5e7eb',padding:'1px'}}/><td colSpan={6+maxAttendees} style={{color:'#6b7280',fontWeight:'700',fontStyle:'italic',padding:'2px'}}>當日無排班</td></tr>}
                                                   {data.tasks.map(t => {
                                                       const ext = getExtraEquipments(t); 
                                                       const tCars = t.cars && t.cars.length > 0 ? t.cars : (t.car ? [safeStr(t.car)] : []);
                                                       return (
-                                                      <tr key={t.id} className={t.status==='cancelled'?'text-gray-400':''}>
-                                                          <td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}></td>
-                                                          <td className="font-black text-base" style={t.eqTheodolite ? { backgroundColor: '#FBCFE8' } : {}}>{t.eqTheodolite||''}</td>
-                                                          <td className="font-black text-base" style={t.eqLevel ? { backgroundColor: '#FEF08A' } : {}}>{t.eqLevel||''}</td>
-                                                          <td className="text-left font-bold px-2 text-base">
+                                                      <tr key={t.id} style={{fontSize:'9px'}} className={t.status==='cancelled'?'text-gray-400':''}>
+                                                          <td style={{backgroundColor:'#e5e7eb',padding:'1px'}}></td>
+                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'2px', ...(t.eqTheodolite ? { backgroundColor: '#FBCFE8' } : {})}}>{t.eqTheodolite||''}</td>
+                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'2px', ...(t.eqLevel ? { backgroundColor: '#FEF08A' } : {})}}>{t.eqLevel||''}</td>
+                                                          <td style={{textAlign:'left',fontWeight:'700',fontSize:'9px',padding:'1px 3px',whiteSpace:'nowrap'}}>
                                                               <span className={t.status==='cancelled'?'line-through':''}>{safeStr(t.projectName)} {t.households?`(${t.households}戶)`:''} {t.itemType}</span>
                                                               {ext.length>0 && <span className="text-blue-600 font-bold" style={{ color: '#2563EB' }}> [{ext.join('、')}]</span>}
                                                               {t.notes && <span className="text-blue-900 font-bold ml-2 text-sm" style={{ color: '#1e3a8a' }}>※ {t.notes}</span>}
                                                               {t.status==='cancelled' && <div className="text-red-600 text-xs mt-0.5">【已取消：{t.cancelReason}】</div>}
                                                           </td>
-                                                          <td className="font-black text-sm px-1 text-left">{(t.attendees||[]).map(a=>getPrintName(a)).join('  ')}</td>
-                                                          <td className="font-black text-base">{(t.attendees||[]).length||''}</td>
-                                                          <td className="font-black text-lg text-blue-800" style={{ color: '#1E40AF' }}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
-                                                          <td className="font-bold text-sm">{tCars.length>0?tCars.join(','):''}</td>
+                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} style={{fontWeight:'900',fontSize:'9px',padding:'1px',width:'22px',textAlign:'center'}}>{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
+                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'1px'}}>{(t.attendees||[]).length||''}</td>
+                                                          <td style={{fontWeight:'900',fontSize:'9px',color:'#1e40af',padding:'1px'}}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
+                                                          <td style={{fontWeight:'700',fontSize:'9px',padding:'1px'}}>{tCars.length>0?tCars.join(','):''}</td>
                                                       </tr>
                                                    )})}
                                               </Fragment>
