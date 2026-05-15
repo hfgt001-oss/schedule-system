@@ -545,6 +545,8 @@ if (!db) return;
                 fetchHolidays();
               }, [viewDateStr, fetchedYears]);
 
+
+              // 清空年度行程與請假資料
               // 💡 匯出資料功能
               const exportAllData = () => {
                   const dataToExport = {
@@ -570,7 +572,47 @@ if (!db) return;
               };
               const showAlert = (title, message) => {
                 setDialog({ isOpen: true, type: 'alert', title: safeStr(title), message: safeStr(message), confirmText: '我知道了', cancelText: '', onConfirm: null, onCancel: null });
+              }
+              const clearYearData = async () => {
+                if (!window.confirm('確定要清空所有行程與請假資料嗎？\n\n此操作無法復原，建議先匯出備份！')) return;
+                if (!window.confirm('再次確認：將清空所有行程與請假記錄，帳號設定不受影響。\n確定繼續？')) return;
+                
+                // 清空本地 localStorage
+                localStorage.removeItem('local_tasks');
+                localStorage.removeItem('local_leaves');
+                
+                // 清空 React state
+                setTasks([]);
+                setLeaves([]);
+                
+                // 清空 Firestore
+                if (db) {
+                  try {
+                    // 刪除所有 tasks
+                    const tSnap = await new Promise((res, rej) => {
+                      const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), snap => {
+                        unsub(); res(snap);
+                      }, rej);
+                    });
+                    for (const d of tSnap.docs) {
+                      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', d.id)).catch(()=>{});
+                    }
+                    // 刪除所有 leaves
+                    const lSnap = await new Promise((res, rej) => {
+                      const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'leaves'), snap => {
+                        unsub(); res(snap);
+                      }, rej);
+                    });
+                    for (const d of lSnap.docs) {
+                      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', d.id)).catch(()=>{});
+                    }
+                  } catch(e) { console.error('清空 Firestore 失敗:', e); }
+                }
+                
+                logAction('清空年度資料', '已清空所有行程與請假記錄');
+                showAlert('清空完成', '所有行程與請假資料已清空，帳號與設定保留。');
               };
+;
 
               // 💡 匯入資料功能
               const importAllData = (event) => {
@@ -2026,6 +2068,7 @@ if (!db) return;
                                               <SvgIcon name="upload" className="w-4 h-4" /> 📤 匯入備份還原資料
                                               <input type="file" accept=".json" onChange={importAllData} ref={fileInputRef} className="hidden" />
                                           </label>
+                                          <div className="flex justify-end mt-1"><button onClick={clearYearData} className="text-[11px] text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 bg-white hover:bg-red-50 rounded-lg px-3 py-1 font-bold flex items-center gap-1 transition-colors no-print"><SvgIcon name="trash" className="w-3 h-3" /> 清空年度行程資料</button></div>
                                       </div>
                                   </div>
 
