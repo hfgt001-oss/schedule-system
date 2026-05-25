@@ -3,12 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>外業行程排班系統</title>
+    <title>外業行程排班系統 (極速免登出版)</title>
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cGF0aCBkPSJNNTAsMiBMOTgsMjIgTDk4LDYyIFE5OCw4OCA1MCw5OCBRMiw4OCAyLDYyIEwyLDIyIFoiIGZpbGw9IiMxYTVjMmEiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2NyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iNDQiIGZpbGw9IndoaXRlIj5IRjwvdGV4dD4KPC9zdmc+">
     <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cGF0aCBkPSJNNTAsMiBMOTgsMjIgTDk4LDYyIFE5OCw4OCA1MCw5OCBRMiw4OCAyLDYyIEwyLDIyIFoiIGZpbGw9IiMxYTVjMmEiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2NyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iNDQiIGZpbGw9IndoaXRlIj5IRjwvdGV4dD4KPC9zdmc+">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23ea580c'/><text x='50%25' y='50%25' dominant-baseline='central' text-anchor='middle' font-family='sans-serif' font-weight='900' font-size='18' fill='white'>外</text></svg>">
-
     
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -23,19 +21,12 @@
     <style>
         /* 全局表格樣式：保證預覽與列印排版 100% 同步 */
         .ptb {border-collapse:collapse;width:100%;}
-        @media print {
-          .ptb, .ptb th, .ptb td { font-size:11px !important; padding:1px 3px !important; line-height:1.3 !important; }
-          .ptb tr { page-break-inside: avoid; }
-          .print-week-table, .print-week-table * { font-size:11px !important; line-height:1.3 !important; }
-          .print-week-table td, .print-week-table th { padding:1px 3px !important; }
-          .print-week-table { border-collapse: collapse !important; width:100% !important; }
-          @page { size: A4 portrait; margin: 8mm; }
-        }
+        @media print { .ptb th, .ptb td { font-size:11px !important; padding:2px 3px !important; } }
         .ptb th, .ptb td {border:1px solid #000;padding:4px;color:#000;font-size:13px;}
         .ptb tr {page-break-inside:avoid;}
 
         @media print {
-          @page { size: A4 portrait; margin: 6mm; }
+          @page { size: A4 landscape; margin: 5mm; }
           .no-print, .print\:hidden { display: none !important; }
           body { 
             -webkit-print-color-adjust: exact; 
@@ -87,7 +78,7 @@
                 signInWithEmailAndPassword: function(auth,e,p){ return auth.signInWithEmailAndPassword(e,p); },
                 fbSignOut: function(auth){ return auth.signOut(); },
                 getFirestore: function(app){ return firebase.firestore(app); },
-                collection: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.collection(a.join('/')); },
+                collection: function(db,col){ return db.collection(col); },
                 doc: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.doc(a.join('/')); },
                 getDoc: function(ref){ return ref.get(); },
                 setDoc: function(ref,data,opts){ return (opts&&opts.merge)?ref.set(data,{merge:true}):ref.set(data); },
@@ -101,7 +92,7 @@
     <script type="text/babel">
         const initApp = () => {
             const { useState, useMemo, useEffect, Fragment } = React;
-            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
+            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
 
             // --- 雙重防丟失：安全的本地儲存存取 ---
             const safeSetStorage = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -240,9 +231,9 @@
 
               return (
                 <div className="relative w-full">
-                  <input type="text" name={name} value={value} autoComplete="off"
+                  <input type="text" name={name} value={value} 
                          onChange={e => { onChange(e); setShow(true); }} 
-                         onFocus={(e) => { e.target.setAttribute('autoComplete','off'); setShow(true); }}
+                         onFocus={() => setShow(true)}
                          onBlur={() => setTimeout(() => setShow(false), 200)} 
                          placeholder={placeholder} className="w-full border-2 p-2 rounded-lg outline-none font-bold focus:border-blue-500 text-base" required={required} autoComplete="off" />
                   {show && filtered.length > 0 && (
@@ -269,7 +260,7 @@
               const [accList,setAccList]=useState(()=>{try{const r=localStorage.getItem('__accs');if(r)return JSON.parse(r);}catch(e){}return[];});
               const [showAccMgr,setShowAccMgr]=useState(false);
               const [accMgrTab,setAccMgrTab]=useState('list');
-              const [newAccForm,setNewAccForm]=useState({username:'',displayName:'',role:'editor'});
+              const [newAccForm,setNewAccForm]=useState({username:'',displayName:'',role:'editor',password:'',confirm:''});
               const [newAccError,setNewAccError]=useState('');
               const [resetTarget,setResetTarget]=useState(null);
               const [resetPwForm,setResetPwForm]=useState({password:'',confirm:'',error:''});
@@ -316,7 +307,6 @@
 
               const [user, setUser] = useState(null);
               const [dbConnected, setDbConnected] = useState(false);
-              const [dbReady, setDbReady] = useState(!!db); // db 是否已初始化
               const [activeTab, setActiveTab] = useState('task');
               const [editingTaskId, setEditingTaskId] = useState(null);
               const [editingLeaveId, setEditingLeaveId] = useState(null);
@@ -326,7 +316,6 @@
               const [searchQuery, setSearchQuery] = useState('');
               
               const [expandedWeekIdx, setExpandedWeekIdx] = useState(null);
-              const [expandedDayDate, setExpandedDayDate] = useState(null);
               const [selectedTaskIds, setSelectedTaskIds] = useState([]);
               const [showBatchModal, setShowBatchModal] = useState(false);
               const initialBatchData = { attendees: [], cars: [], eqTheodolite: '', eqLevel: '', hasInclinometer: false, hasTiltTube: false, hasStrainGauge: false, hasWaterLevel: false, hasThermal: false, hasMoistureMeter: false, hasEndoscope: false, hasStethoscope: false, hasPipeLocator: false, hasGPR: false, hasOdometer: false, customEqs: [] };
@@ -358,7 +347,7 @@
                 let accs=getAccounts(),changed=false;
                 if(accs.length===0){accs=personnel.map(n=>({id:'u_'+n,username:n,displayName:n,role:n==='雅淳'?'superadmin':'editor',passwordHash:null,createdAt:new Date().toISOString()}));changed=true;}
                 else{personnel.forEach(n=>{if(!accs.find(a=>a.username===n)){accs.push({id:'u_'+n,username:n,displayName:n,role:'editor',passwordHash:null,createdAt:new Date().toISOString()});changed=true;}});accs=accs.map(a=>{const fr=getFixedRole(a.displayName,a.username,a.role);if(fr!==a.role){changed=true;return{...a,role:fr};}return a;});}
-                if(changed){saveAccountsToFS(accs);}else{saveAccounts(accs);setAccList(accs);}
+                if(changed){saveAccounts(accs);setAccList(accs);}else setAccList(accs);
               },[personnel]);
 
               useEffect(() => {
@@ -370,126 +359,9 @@
                 return onAuthStateChanged(auth, setUser);
               }, []);
 
-              // ===== Firestore 帳號同步 =====
-              const FS_ACCS_PATH = ['artifacts', appId, 'public', 'data', 'settings', 'accounts'];
-
-              const loadAccountsFromFS = async () => {
-if (!db) return;
-                try {
-                  const snap = await getDoc(doc(db, ...FS_ACCS_PATH));
-  const localList = getAccounts();
-
-                  if (snap.exists && snap.data() && snap.data().list && snap.data().list.length > 0) {
-                    const fsList = snap.data().list;
-                    let needWriteBack = false;
-
-                    // 合併規則：
-                    // 1. 本地有密碼 → 永遠保留本地密碼（不被 Firestore 覆蓋）
-                    // 2. Firestore 有密碼但本地沒有 → 用 Firestore 的密碼（其他電腦設的）
-                    // 3. Firestore 有帳號但本地沒有 → 補入
-                    const merged = fsList.map(fa => {
-                      const la = localList.find(a => a.username === fa.username);
-                      if (!la) return fa; // 只有FS有的帳號，直接用FS
-                      // Firestore 是真相來源：
-                      // FS 有密碼 → 用FS密碼（可能是其他電腦設的）
-                      // FS 是 null → 密碼已被重設 → 清空本地密碼
-                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
-                      if (!fa.passwordHash && la.passwordHash) {
-                        // 本地有密碼但FS沒有：可能是本電腦設的但還沒同步
-                        // 只在「自己的帳號」時才回寫，避免覆蓋重設
-                        const curAcc = getSession();
-                        if (curAcc && curAcc.username === fa.username) {
-                          needWriteBack = true;
-                          return {...fa, passwordHash: la.passwordHash};
-                        }
-                        return fa; // 別人的帳號：FS說null就是null（已被重設）
-                      }
-                      return fa;
-                    });
-
-                    // 加入本地有但 Firestore 沒有的帳號
-                    localList.forEach(la => {
-                      if (!merged.find(m => m.username === la.username)) {
-                        merged.push(la);
-                        needWriteBack = true;
-                      }
-                    });
-
-                    saveAccounts(merged);
-                    setAccList(merged);
-
-                    // 如果目前登入者的角色在 Firestore 有更新 → 同步更新 session
-                    const curAcc = getSession();
-                    if (curAcc) {
-                      const updatedAcc = merged.find(a => a.username === curAcc.username);
-                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
-                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
-                        const newSession = {...curAcc, role: fixedRole};
-                        setCurrentAccount(newSession);
-                        saveSession(newSession);
-                      }
-                    }
-
-                    // 有需要回寫（本地有密碼但FS沒有）→ 同步到 Firestore
-                    if (needWriteBack) {
-                      setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
-                    }
-                  } else if (localList.length > 0) {
-                    // Firestore 沒有帳號資料，把本地資料推上去
-                    setDoc(doc(db,...FS_ACCS_PATH),{list:localList,updatedAt:new Date().toISOString()}).catch(()=>{});
-                    setAccList(localList);
-                  }
-                } catch(e) { /* 帳號讀取失敗 */ }
-              };
-
-              const saveAccountsToFS = async (accs) => {
-                saveAccounts(accs); setAccList(accs);
-if (!db) return;
-                try {
-                  await setDoc(doc(db, ...FS_ACCS_PATH), {list: accs, updatedAt: new Date().toISOString()});
-                } catch(e) { /* 帳號寫入失敗 */ }
-              };
-
-              // 即時監聽帳號變化（角色更動立即生效）
-              useEffect(() => {
-                if (!db) return;
-                loadAccountsFromFS();
-                // 監聽帳號文件變化
-                const unsubAccs = onSnapshot(doc(db,...FS_ACCS_PATH), (snap) => {
-                  if ((snap.exists===true||!!snap.exists) && snap.data && snap.data() && snap.data().list) {
-                    const fsList = snap.data().list;
-                    const localList = getAccounts();
-                    // Firestore 是真相來源
-                    const merged = fsList.map(fa => {
-                      const la = localList.find(a => a.username === fa.username);
-                      if (!la) return fa;
-                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
-                      // FS是null：只有自己帳號才回寫（否則代表被重設）
-                      const curAcc = getSession();
-                      if (la.passwordHash && curAcc && curAcc.username === fa.username) {
-                        return {...fa, passwordHash: la.passwordHash};
-                      }
-                      return fa; // 被重設了，清空
-                    });
-                    saveAccounts(merged); setAccList(merged);
-                    // 即時更新當前登入者的角色
-                    const curAcc = getSession();
-                    if (curAcc) {
-                      const updatedAcc = merged.find(a => a.username === curAcc.username);
-                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
-                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
-                        const newSession = {...curAcc, role: fixedRole};
-                        setCurrentAccount(newSession); saveSession(newSession);
-                      }
-                    }
-                  }
-                }, ()=>{});
-                return () => unsubAccs();
-              }, []);
-
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
-                if (!db) { console.warn("db not ready"); return; }
+                if (!user || !db) return;
                 setDbConnected(true);
 
                 const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
@@ -501,18 +373,18 @@ if (!db) return;
                 }, () => {});
 
                 const unsubPersonnel = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), (s) => {
-                    if ((s.exists===true||!!s.exists) && s.data && s.data().names) {
+                    if (s.exists() && s.data().names) {
                         setPersonnel(s.data().names); setManagers(s.data().managers||[]); setIndoors(s.data().indoors||[]); setShortNames(s.data().shortNames||{}); 
                     } else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: CUSTOM_SORT_ORDER, managers: DEFAULT_MANAGERS, indoors: DEFAULT_INDOORS, shortNames: {} }).catch(()=>{});
                 }, () => {});
 
                 const unsubCars = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), (s) => {
-                    if ((s.exists===true||!!s.exists) && s.data && s.data().list) setCars(s.data().list);
+                    if (s.exists() && s.data().list) setCars(s.data().list);
                     else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: DEFAULT_CARS }).catch(()=>{});
                 }, () => {});
 
                 const unsubEqs = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), (s) => {
-                    if ((s.exists===true||!!s.exists) && s.data && s.data().list) {
+                    if (s.exists() && s.data().list) {
                         const parsedList = (s.data().list || []).filter(item => item !== null && item !== undefined).map(item => typeof item === 'string' ? { name: item, category: '其他' } : { name: safeStr(item?.name||item), category: safeStr(item?.category||'其他') });
                         setCustomEqsList(parsedList);
                     } else {
@@ -521,7 +393,7 @@ if (!db) return;
                 }, () => {});
 
                 return () => { unsubTasks(); unsubLeaves(); unsubPersonnel(); unsubCars(); unsubEqs(); };
-              }, []);
+              }, [user]);
 
               useEffect(() => {
                 const year = viewDateStr.split('-')[0];
@@ -546,8 +418,6 @@ if (!db) return;
                 fetchHolidays();
               }, [viewDateStr, fetchedYears]);
 
-
-              // 清空年度行程與請假資料
               // 💡 匯出資料功能
               const exportAllData = () => {
                   const dataToExport = {
@@ -573,47 +443,7 @@ if (!db) return;
               };
               const showAlert = (title, message) => {
                 setDialog({ isOpen: true, type: 'alert', title: safeStr(title), message: safeStr(message), confirmText: '我知道了', cancelText: '', onConfirm: null, onCancel: null });
-              }
-              const clearYearData = async () => {
-                if (!window.confirm('確定要清空所有行程與請假資料嗎？\n\n此操作無法復原，建議先匯出備份！')) return;
-                if (!window.confirm('再次確認：將清空所有行程與請假記錄，帳號設定不受影響。\n確定繼續？')) return;
-                
-                // 清空本地 localStorage
-                localStorage.removeItem('local_tasks');
-                localStorage.removeItem('local_leaves');
-                
-                // 清空 React state
-                setTasks([]);
-                setLeaves([]);
-                
-                // 清空 Firestore
-                if (db) {
-                  try {
-                    // 刪除所有 tasks
-                    const tSnap = await new Promise((res, rej) => {
-                      const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), snap => {
-                        unsub(); res(snap);
-                      }, rej);
-                    });
-                    for (const d of tSnap.docs) {
-                      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', d.id)).catch(()=>{});
-                    }
-                    // 刪除所有 leaves
-                    const lSnap = await new Promise((res, rej) => {
-                      const unsub = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'leaves'), snap => {
-                        unsub(); res(snap);
-                      }, rej);
-                    });
-                    for (const d of lSnap.docs) {
-                      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', d.id)).catch(()=>{});
-                    }
-                  } catch(e) { console.error('清空 Firestore 失敗:', e); }
-                }
-                
-                logAction('清空年度資料', '已清空所有行程與請假記錄');
-                showAlert('清空完成', '所有行程與請假資料已清空，帳號與設定保留。');
               };
-;
 
               // 💡 匯入資料功能
               const importAllData = (event) => {
@@ -634,7 +464,7 @@ if (!db) return;
                           if (importedData.customEqsList) setCustomEqsList(importedData.customEqsList);
 
                           // 同步到雲端
-                          if (db) {
+                          if (db && user) {
                               for(const t of importedData.tasks||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{});
                               for(const l of importedData.leaves||[]) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(()=>{});
                               await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: importedData.personnel||CUSTOM_SORT_ORDER, managers: importedData.managers||DEFAULT_MANAGERS, indoors: importedData.indoors||DEFAULT_INDOORS, shortNames: importedData.shortNames||{} }, {merge:true}).catch(()=>{});
@@ -702,7 +532,7 @@ if (!db) return;
               const deleteTask = async (id) => {
                 setTasks(prev => prev.filter(x => x.id !== id));
                 setSelectedTaskIds(prev => prev.filter(x => x !== id));
-                if (db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e));
+                if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e));
               };
 
               const resetFd = () => { setFormData(prev => ({startDate: prev.startDate, endDate: prev.endDate, time: '0900', timeSlot: '自動判定', projectName: '', households: '', itemType: '鑑定', notes: '', eqTheodolite: '', eqLevel: '', attendees: [], cars: [], customEqs: [], groupId: '', status: 'active', cancelReason: ''})); setDailyOverrides({}); setEditingTaskId(null); };
@@ -714,7 +544,7 @@ if (!db) return;
                 setTasks(prev => { const filtered = editingTaskId ? prev.filter(t => t.id !== editingTaskId) : prev; return [...filtered, ...nT]; });
                 logAction(editingTaskId?'更新行程':'新增行程',`${bData.projectName||''} ${dates[0]||''}`); setEditingTaskId(null); setViewDateStr(dates[0]); resetFd();
 
-                if (db) { for(const t of nT) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{}); }
+                if (db && user) { for(const t of nT) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(t.id)), t).catch(()=>{}); }
               };
 
               const handleTaskSubmit = async (e) => {
@@ -724,7 +554,7 @@ if (!db) return;
                    return showConfirm('連動更新確認', '行程屬「連續群組」。\n[連動更新]：同步更新群組所有行程\n[僅更新當日]：只修改這天', async () => {
                       setTasks(prev => prev.map(t => t.groupId === formData.groupId ? { ...bData, date: t.date, groupId: formData.groupId, id: t.id } : t));
                       setViewDateStr(formData.startDate); setEditingTaskId(null); resetFd();
-                      if (db) for(const gt of tasks.filter(t=>t.groupId===formData.groupId)) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(gt.id)), {...bData, date:gt.date, groupId:formData.groupId, id:gt.id});
+                      if (db && user) for(const gt of tasks.filter(t=>t.groupId===formData.groupId)) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(gt.id)), {...bData, date:gt.date, groupId:formData.groupId, id:gt.id});
                    }, () => submitSingleOrNew(dates, bData), '連動更新', '僅更新當日');
                 }
                 submitSingleOrNew(dates, bData);
@@ -746,7 +576,7 @@ if (!db) return;
                   setSelectedTaskIds(prev => prev.filter(x => !idsToDelete.includes(x)));
                   setDeleteGroupModal({ isOpen: false, groupId: null, dates: [] });
 
-                  if (db) {
+                  if (db && user) {
                       for (const id of idsToDelete) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
                   }
               };
@@ -755,7 +585,7 @@ if (!db) return;
               const handleBatchDelete = () => {
                   showConfirm('確認批次刪除', `確定要刪除這 ${selectedTaskIds.length} 筆行程嗎？刪除後無法復原。`, async () => {
                       setTasks(prev => prev.filter(x => !selectedTaskIds.includes(x.id)));
-                      if (db) {
+                      if (db && user) {
                           for (const id of selectedTaskIds) { await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'tasks', String(id))).catch(e=>console.error(e)); }
                       }
                       setSelectedTaskIds([]);
@@ -764,7 +594,7 @@ if (!db) return;
 
               const handleBatchSubmit = async () => {
                   setTasks(prev => prev.map(t => selectedTaskIds.includes(t.id) ? { ...t, ...batchData, car: '' } : t));
-                  if (db) {
+                  if (db && user) {
                       for (const id of selectedTaskIds) {
                           const t = tasks.find(x => x.id === id);
                           if (t) {
@@ -810,7 +640,7 @@ if (!db) return;
                 logAction(_isEditLeave?'更新請假':'新增請假',`${leaveFormData.person} ${leaveFormData.startDate}`); setEditingLeaveId(null); setViewDateStr(dates[0]);
                 setLeaveFormData(prev => ({ ...prev, person: '', leaveType: '全天', leaveCategory: '特休', leaveNotes: '' }));
 
-                if (db) {
+                if (db && user) {
                     for (const l of newLeaves) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(l.id)), l).catch(e=>console.error(e)); }
                 }
               };
@@ -820,7 +650,7 @@ if (!db) return;
                   const target=leaves.find(l=>l.id===id);
                   if(target)logAction('刪除請假',`${target.person} ${target.date||target.startDate||''} 請假`);
                   setLeaves(prev => prev.filter(l => l.id !== id));
-                  if (db) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(id))).catch(e=>console.error(e));
+                  if (db && user) await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'leaves', String(id))).catch(e=>console.error(e));
                 });
               };
 
@@ -837,7 +667,7 @@ if (!db) return;
                   const nPs = [...personnel, name]; const nMs = newEmp.job === 'manager' ? [...managers, name] : managers; const nIs = newEmp.job === 'indoor' ? [...indoors, name] : indoors;
                   setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
 
-                  if (db) {
+                  if (db && user) {
                       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
                   }
                   setNewEmp({ n: '', job: 'field' });
@@ -848,7 +678,7 @@ if (!db) return;
                       const nPs = personnel.filter(p => p !== n); const nMs = managers.filter(p => p !== n); const nIs = indoors.filter(p => p !== n);
                       setPersonnel(nPs); setManagers(nMs); setIndoors(nIs);
 
-                      if (db) {
+                      if (db && user) {
                           await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: nPs, managers: nMs, indoors: nIs, shortNames: shortNames }, { merge: true }).catch(e=>console.error(e));
                       }
                   });
@@ -857,7 +687,7 @@ if (!db) return;
               const updateShortName = async (person, newShortName) => {
                   const updatedShortNames = { ...shortNames, [person]: newShortName };
                   setShortNames(updatedShortNames);
-                  if (db) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { shortNames: updatedShortNames }, { merge: true }).catch(e=>console.error(e)); }
+                  if (db && user) { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { shortNames: updatedShortNames }, { merge: true }).catch(e=>console.error(e)); }
               };
 
               const getPrintName = (fullName) => {
@@ -872,7 +702,7 @@ if (!db) return;
                   const addedCarName = newCarName.trim();
                   const newCars = [...cars, addedCarName];
                   setCars(newCars);
-                  if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
                   setNewCarName('');
                 }
               };
@@ -880,7 +710,7 @@ if (!db) return;
               const handleDeleteCar = async (carToDelete) => {
                 const newCars = cars.filter(c => c !== carToDelete);
                 setCars(newCars);
-                if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
+                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: newCars }).catch(e=>console.error(e));
                 if (formData.car === carToDelete) setFormData(prev => ({ ...prev, car: '' }));
                 if ((formData.cars || []).includes(carToDelete)) setFormData(prev => ({ ...prev, cars: (prev.cars || []).filter(c => c !== carToDelete) }));
               };
@@ -890,7 +720,7 @@ if (!db) return;
                 if (name && !customEqsList.some(eq => eq && safeStr(eq.name) === name)) {
                   const newEqs = [...customEqsList, { name, category }];
                   setCustomEqsList(newEqs);
-                  if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                  if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
                   setNewEqName(''); setNewEqCat(''); 
                 }
               };
@@ -898,7 +728,7 @@ if (!db) return;
               const handleDeleteEq = async (eqNameToDelete) => {
                 const newEqs = customEqsList.filter(e => e && safeStr(e.name) !== eqNameToDelete);
                 setCustomEqsList(newEqs);
-                if (db) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
+                if (db && user) await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), { list: newEqs }).catch(e=>console.error(e));
                 if ((formData.customEqs || []).includes(eqNameToDelete)) setFormData(prev => ({ ...prev, customEqs: (prev.customEqs || []).filter(e => e !== eqNameToDelete) }));
               };
 
@@ -1286,7 +1116,7 @@ if (!db) return;
                 const _yr=new Date(viewDateStr).getFullYear()-1911;
                 const _mo=new Date(viewDateStr).getMonth()+1;
                 if(viewMode==='month') return (
-                  <div style={{width:'100%',height:'197mm',maxHeight:'197mm',display:'flex',flexDirection:'column',fontFamily:'sans-serif',color:'#000',boxSizing:'border-box',WebkitPrintColorAdjust:'exact',colorAdjust:'exact',overflow:'hidden'}}>
+                  <div style={{width:'100%',height:'197mm',display:'flex',flexDirection:'column',fontFamily:'sans-serif',color:'#000',boxSizing:'border-box',WebkitPrintColorAdjust:'exact',colorAdjust:'exact'}}>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0,marginBottom:'2px'}}>
                       <div style={{flex:1}}></div>
                       <h2 style={{textAlign:'center',fontWeight:900,fontSize:'13px',margin:0,flex:2}}>{_yr}年{_mo}月 外業行程總覽</h2>
@@ -1317,7 +1147,7 @@ if (!db) return;
                                       <div key={i} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#b91c1c',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>[假]{getPrintName(lv.person)}{lv.leaveType!=='全天'?`(${lv.leaveType})`:''}</div>
                                     ))}
                                     {dt.map(t=>(
-                                      <div key={t.id} style={{fontSize:'9px',lineHeight:'1.1',fontWeight:'bold',color:'#000',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{formatTimeDisplay(t.time,t.timeSlot)} {safeStr(t.projectName)}</div>
+                                      <div key={t.id} style={{fontSize:'10px',lineHeight:'1.2',fontWeight:'bold',color:'#000',overflow:'hidden',whiteSpace:'nowrap',textOverflow:'ellipsis'}}>{formatTimeDisplay(t.time,t.timeSlot)} {safeStr(t.projectName)}</div>
                                     ))}
                                   </div>
                                 </div>
@@ -1333,22 +1163,22 @@ if (!db) return;
                   <div className="w-full font-sans text-black">
                           <div className="w-full">
                               <h2 className="text-xl font-black text-center mb-2 whitespace-nowrap" style={{whiteSpace: 'nowrap'}}>外業行程安排 ({formatMinguo(viewWeekDates[0])} ~ {formatMinguo(viewWeekDates[6])})</h2>
-                                  <table className="ptb print-week-table w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px',borderCollapse:'collapse'}} cellPadding="1">
-                                  <thead>
-                                      <tr style={{backgroundColor:'#d1d5db'}}>
-                                          <th style={{width:'70px',fontSize:'9px',padding:'2px'}}>日期</th>
-                                          <th style={{width:'28px',fontSize:'9px',backgroundColor:'#fbcfe8',padding:'2px'}}>經緯</th>
-                                          <th style={{width:'28px',fontSize:'9px',backgroundColor:'#fef08a',padding:'2px'}}>水準</th>
-                                          <th style={{fontSize:'9px',padding:'2px',textAlign:'left',paddingLeft:'4px',whiteSpace:'nowrap'}}>案名與工作項目</th>
-                                          <th colSpan={maxAttendees} style={{fontSize:'9px',padding:'2px'}}>人員</th>
-                                          <th style={{width:'28px',fontSize:'9px',padding:'2px'}}>人數</th>
-                                          <th style={{width:'50px',fontSize:'9px',padding:'2px'}}>時間</th>
-                                          <th style={{width:'65px',fontSize:'9px',padding:'2px'}}>車輛</th>
+                              <table className="ptb w-full text-center" border={1} cellSpacing="0" style={{fontSize:'11px'}} cellPadding="4">
+                                  <thead className="bg-gray-200">
+                                      <tr>
+                                          <th className="w-[85px] text-base">日期</th>
+                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FBCFE8' }}>經緯</th>
+                                          <th className="text-xs w-[35px]" style={{ backgroundColor: '#FEF08A' }}>水準</th>
+                                          <th className="text-left px-2 text-base">案名與工作項目</th>
+                                          <th className="text-base" colSpan={maxAttendees}>出勤人員</th>
+                                          <th className="w-[35px] text-xs">出勤<br/>人數</th>
+                                          <th className="w-[55px] text-base">時間</th>
+                                          <th className="w-[80px] text-base">車輛</th>
                                       </tr>
                                   </thead>
                                   <tbody>
                                       {Object.keys(scheduleByDate).length === 0 && (
-                                        <tr><td colSpan={8} className="px-4 py-8 text-gray-500 italic text-center font-bold text-xl">該週尚無排班與請假紀錄</td></tr>
+                                        <tr><td colSpan={8 + maxAttendees} className="px-4 py-8 text-gray-500 italic text-center font-bold text-xl">該週尚無排班與請假紀錄</td></tr>
                                       )}
                                       {Object.entries(scheduleByDate).map(([date, data]) => {
                                           const shortD = `${parseInt(date.split('-')[1],10)}/${parseInt(date.split('-')[2],10)}(${getDayOfWeek(date)})`;
@@ -1356,33 +1186,33 @@ if (!db) return;
                                           const pMa = managers.filter(m=>m!=='雅淳');
                                           return (
                                               <Fragment key={date}>
-                                                  <tr style={{backgroundColor:'#e5e7eb'}}>
-                                                      <td style={{fontWeight:'900',fontSize:'9px',whiteSpace:'nowrap',padding:'2px',backgroundColor:'#e5e7eb'}}>{shortD}</td>
-                                                      <td colSpan={6+maxAttendees} style={{textAlign:'left',fontWeight:'900',fontSize:'9px',padding:'2px 4px',color:'#b91c1c'}}>
+                                                  <tr className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}>
+                                                      <td className="font-black text-base whitespace-nowrap">{shortD}</td>
+                                                      <td colSpan={7+maxAttendees} className="text-left font-black text-red-600 px-2 text-base">
                                                           {pMa.map(getPrintName).join(' ')} {pIn.map(getPrintName).join(' ')}
                                                           {holidays[date] && <span className="ml-2">[{holidays[date]}]</span>}
                                                           {data.leaves.length > 0 && <span className="ml-4">請假名單: {data.leaves.map(l=>`${getPrintName(l.person)}(${l.leaveType})`).join('、')}</span>}
                                                       </td>
                                                   </tr>
-                                                  {data.tasks.length===0 && <tr><td style={{backgroundColor:'#e5e7eb',padding:'1px'}}/><td colSpan={6+maxAttendees} style={{color:'#6b7280',fontWeight:'700',fontStyle:'italic',padding:'2px'}}>當日無排班</td></tr>}
+                                                  {data.tasks.length===0 && <tr><td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}/><td colSpan={7+maxAttendees} className="text-gray-500 font-bold italic">當日無排班</td></tr>}
                                                   {data.tasks.map(t => {
                                                       const ext = getExtraEquipments(t); 
                                                       const tCars = t.cars && t.cars.length > 0 ? t.cars : (t.car ? [safeStr(t.car)] : []);
                                                       return (
-                                                      <tr key={t.id} style={{fontSize:'9px'}} className={t.status==='cancelled'?'text-gray-400':''}>
-                                                          <td style={{backgroundColor:'#e5e7eb',padding:'1px'}}></td>
-                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'2px', ...(t.eqTheodolite ? { backgroundColor: '#FBCFE8' } : {})}}>{t.eqTheodolite||''}</td>
-                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'2px', ...(t.eqLevel ? { backgroundColor: '#FEF08A' } : {})}}>{t.eqLevel||''}</td>
-                                                          <td style={{textAlign:'left',fontWeight:'700',fontSize:'9px',padding:'1px 3px',whiteSpace:'nowrap'}}>
+                                                      <tr key={t.id} className={t.status==='cancelled'?'text-gray-400':''}>
+                                                          <td className="bg-gray-100" style={{ backgroundColor: '#F3F4F6' }}></td>
+                                                          <td className="font-black text-base" style={t.eqTheodolite ? { backgroundColor: '#FBCFE8' } : {}}>{t.eqTheodolite||''}</td>
+                                                          <td className="font-black text-base" style={t.eqLevel ? { backgroundColor: '#FEF08A' } : {}}>{t.eqLevel||''}</td>
+                                                          <td className="text-left font-bold px-2 text-base">
                                                               <span className={t.status==='cancelled'?'line-through':''}>{safeStr(t.projectName)} {t.households?`(${t.households}戶)`:''} {t.itemType}</span>
                                                               {ext.length>0 && <span className="text-blue-600 font-bold" style={{ color: '#2563EB' }}> [{ext.join('、')}]</span>}
                                                               {t.notes && <span className="text-blue-900 font-bold ml-2 text-sm" style={{ color: '#1e3a8a' }}>※ {t.notes}</span>}
                                                               {t.status==='cancelled' && <div className="text-red-600 text-xs mt-0.5">【已取消：{t.cancelReason}】</div>}
                                                           </td>
-                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} style={{fontWeight:'900',fontSize:'9px',padding:'1px',width:'22px',textAlign:'center'}}>{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
-                                                          <td style={{fontWeight:'900',fontSize:'9px',padding:'1px'}}>{(t.attendees||[]).length||''}</td>
-                                                          <td style={{fontWeight:'900',fontSize:'9px',color:'#1e40af',padding:'1px'}}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
-                                                          <td style={{fontWeight:'700',fontSize:'9px',padding:'1px'}}>{tCars.length>0?tCars.join(','):''}</td>
+                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} className="font-black text-base px-1">{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
+                                                          <td className="font-black text-base">{(t.attendees||[]).length||''}</td>
+                                                          <td className="font-black text-lg text-blue-800" style={{ color: '#1E40AF' }}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
+                                                          <td className="font-bold text-sm">{tCars.length>0?tCars.join(','):''}</td>
                                                       </tr>
                                                    )})}
                                               </Fragment>
@@ -1390,7 +1220,7 @@ if (!db) return;
                                       })}
                                   </tbody>
                               </table>
-                              {!isViewer && <div style={{breakBefore:"page",pageBreakBefore:"always",marginTop:0}}>
+                              <div style={{breakBefore:"page",pageBreakBefore:"always",marginTop:0}}>
                                   <div className="flex justify-between items-start mb-3"><div style={{width:'120px'}}></div><h2 className="text-2xl font-black text-center text-black">外勤次數智慧分析 ({formatMinguo(viewWeekDates[0])} 起)</h2><div style={{width:'120px',textAlign:'right',fontSize:'9px',color:'#9ca3af',paddingTop:'6px'}}>最後更新：{(()=>{try{const l=JSON.parse(localStorage.getItem('__editlogs')||'[]');return l[0]?l[0].time:'';}catch(e){return '';}})()}</div></div>
                                   <table className="ptb w-full text-base text-black text-center" border={1} cellSpacing="0" cellPadding="4">
                                       <thead className="bg-gray-200" style={{ backgroundColor: '#E5E7EB' }}>
@@ -1412,7 +1242,7 @@ if (!db) return;
                                           )})}
                                       </tbody>
                                   </table>
-                              </div>}
+                              </div>
                           </div>
                   </div>
                 );
@@ -1487,42 +1317,24 @@ if (!db) return;
                 return role;
               };
               const doLogin = async () => {
-                // 先從 Firestore 讀最新帳號（取得最新角色）
-                let accs = getAccounts();
-                try {
-                  const fsSnap = await getDoc(doc(db,...FS_ACCS_PATH));
-                  if((fsSnap.exists===true||!!fsSnap.exists) && fsSnap.data && fsSnap.data().list) {
-                    const fsList = fsSnap.data().list;
-                    // Firestore 是真相來源（角色和密碼都用FS）
-                    // 只有「自己帳號」且FS無密碼時，才用本地密碼
-                    accs = fsList.map(fa=>{
-                      const la=accs.find(a=>a.username===fa.username);
-                      if (!la) return fa;
-                      if (fa.passwordHash) return {...fa}; // FS有密碼優先
-                      // FS無密碼：只有登入者自己的帳號才保留本地密碼
-                      if (la.passwordHash && fa.username === loginForm.username) {
-                        return {...fa, passwordHash: la.passwordHash};
-                      }
-                      return fa; // 其他人被重設了
-                    });
-                    saveAccounts(accs); setAccList(accs);
-                  }
-                } catch(e){}
+                const accs = getAccounts();
                 const found = accs.find(a => a.username === loginForm.username);
                 if (!found) { setLoginForm(p=>({...p,error:'請先選擇使用者。'})); return; }
                 if (!loginForm.password) { setLoginForm(p=>({...p,error:'請輸入密碼。'})); return; }
                 const email = toEmail(found.username);
                 if (found.passwordHash === null) {
                   if (loginForm.password.length < 6) { setLoginForm(p=>({...p,error:'首次登入，請設定至少 6 碼密碼。'})); return; }
-                  // 純本地 hash 驗證，不依賴 Firebase Auth
-                  const pwHash=hashPw(loginForm.password);
-                  const _fixedR=getFixedRole(found.displayName,found.username,found.role);
-                  const loggedIn={...found,passwordHash:pwHash,role:_fixedR,email};
-                  const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
-                  saveAccountsToFS(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
-                  setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
-                  // Firebase Auth 背景嘗試（失敗不影響登入）
-                  try { createUserWithEmailAndPassword(auth,email,loginForm.password).catch(()=>{}); } catch(e){}
+                  try {
+                    let fbUser;
+                    try { const c=await createUserWithEmailAndPassword(auth,email,loginForm.password); fbUser=c.user; }
+                    catch(e) { if(e.code==='auth/email-already-in-use'){const c=await signInWithEmailAndPassword(auth,email,loginForm.password);fbUser=c.user;}else throw e; }
+                    await saveUserRole(fbUser.uid, found.role, found.displayName);
+                    const _fixedR=getFixedRole(found.displayName,found.username,found.role);
+                    const loggedIn={...found,id:fbUser.uid,passwordHash:'set',role:_fixedR,email};
+                    const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
+                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  } catch(err) { setLoginForm(p=>({...p,error:'建立帳號失敗：'+(err.message||err.code)})); }
                 } else {
                   try {
                     const c=await signInWithEmailAndPassword(auth,email,loginForm.password);
@@ -1545,28 +1357,30 @@ if (!db) return;
               };
 
               const doAddAccount = async () => {
-                if(!newAccForm.username.trim()||!newAccForm.displayName.trim()){setNewAccError('帳號名稱與顯示名稱為必填。');return;}
+                if(!newAccForm.username.trim()||!newAccForm.displayName.trim()||!newAccForm.password){setNewAccError('所有欄位均為必填。');return;}
+                if(newAccForm.password!==newAccForm.confirm){setNewAccError('兩次密碼不一致。');return;}
+                if(newAccForm.password.length<6){setNewAccError('密碼至少 6 碼。');return;}
                 const accs=getAccounts();
                 if(accs.find(a=>a.username===newAccForm.username.trim())){setNewAccError('帳號名稱已存在。');return;}
                 try {
-                  const na={id:'u_'+Date.now(),username:newAccForm.username.trim(),displayName:newAccForm.displayName.trim(),role:newAccForm.role,passwordHash:null,email:toEmail(newAccForm.username.trim())};
-                  const upd=[...accs,na]; saveAccountsToFS(upd);
-                  setNewAccForm({username:'',displayName:'',role:'editor'}); setNewAccError('');
-                  showAlert('建立成功',`已建立「${newAccForm.displayName.trim()}」帳號，對方首次登入時可自行設定密碼。`);
-                } catch(err){ setNewAccError('建立失敗：'+(err.message||err.code)); }
+                  const c=await createUserWithEmailAndPassword(auth,toEmail(newAccForm.username.trim()),newAccForm.password);
+                  await saveUserRole(c.user.uid,newAccForm.role,newAccForm.displayName.trim());
+                  const na={id:c.user.uid,username:newAccForm.username.trim(),displayName:newAccForm.displayName.trim(),role:newAccForm.role,passwordHash:'set',email:toEmail(newAccForm.username.trim()),createdAt:new Date().toISOString()};
+                  const upd=[...accs,na]; saveAccounts(upd); setAccList(upd);
+                  setNewAccForm({username:'',displayName:'',role:'editor',password:'',confirm:''}); setNewAccError(''); setAccMgrTab('list');
+                } catch(err){ setNewAccError(err.code==='auth/email-already-in-use'?'帳號已存在。':'建立失敗：'+(err.message||err.code)); }
               };
-
 
               const doDeleteAccount = async (id) => {
                 if(id===currentAccount?.id){alert('不能刪除自己！');return;}
                 if(db) await setDoc(doc(db,'artifacts',appId,'public','data','userRoles',id),{role:'disabled'},{merge:true}).catch(()=>{});
-                const upd=getAccounts().filter(a=>a.id!==id); saveAccountsToFS(upd);
+                const upd=getAccounts().filter(a=>a.id!==id); saveAccounts(upd); setAccList(upd);
               };
 
               const doResetPassword = async (acc) => {
                 if(!window.confirm(`確定要重設「${acc.displayName}」的密碼？\n對方下次登入時可自行設定新密碼。`)) return;
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,passwordHash:null}:a);
-                saveAccountsToFS(upd);
+                saveAccounts(upd); setAccList(upd);
                 logAction('重設密碼',`${acc.displayName}`);
                 showAlert('重設完成',`已重設「${acc.displayName}」的密碼，對方下次登入時可設定新密碼。`);
               };
@@ -1577,8 +1391,9 @@ if (!db) return;
                 }
                 if(acc.id===currentAccount?.id&&newRole!=='superadmin'){alert('不能降低自己的最高管理員權限！');return;}
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,role:newRole}:a);
-                saveAccountsToFS(upd); // ← 同步到 Firestore，所有人立即生效
+                saveAccounts(upd); setAccList(upd);
                 if(acc.id===currentAccount?.id){const newAcc={...currentAccount,role:newRole};setCurrentAccount(newAcc);saveSession(newAcc);}
+                if(db&&acc.id&&!acc.id.startsWith('u_')) saveUserRole(acc.id,newRole,acc.displayName).catch(()=>{});
                 logAction('角色變更',`${acc.displayName}: ${ROLE_LABELS[acc.role]||acc.role} → ${ROLE_LABELS[newRole]||newRole}`);
                 setEditRoleTarget(null);
               };
@@ -1587,7 +1402,7 @@ if (!db) return;
                 const accs=[...accList],idx=accs.findIndex(a=>a.id===id);
                 if(idx<0||(dir==='up'&&idx===0)||(dir==='down'&&idx===accs.length-1))return;
                 const sw=dir==='up'?idx-1:idx+1;[accs[idx],accs[sw]]=[accs[sw],accs[idx]];
-                saveAccountsToFS(accs);
+                saveAccounts(accs);setAccList(accs);
               };
               // ===== 登入頁面 =====
               if (loginPage) return (
@@ -1643,7 +1458,7 @@ if (!db) return;
               return (
                 <Fragment>
                   {/* --- Modal 對話框 --- */}
-                  {showAccMgr&&isSuperAdmin&&(<div className="fixed inset-0 bg-black/60 z-[400] flex items-center justify-center p-4 print:hidden"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"><div className="bg-slate-800 px-5 py-4 flex justify-between items-center flex-shrink-0"><h2 className="font-black text-white text-lg">帳號管理</h2><button onClick={()=>setShowAccMgr(false)} className="text-slate-400 hover:text-white"><SvgIcon name="x" className="w-5 h-5"/></button></div><div className="flex border-b flex-shrink-0"><button onClick={()=>setAccMgrTab('list')} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='list'?'bg-white text-blue-700 border-b-2 border-blue-600':'text-gray-500'}`}>帳號列表 ({accList.length})</button><button onClick={()=>{setAccMgrTab('add');setNewAccError('');}} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='add'?'bg-white text-green-700 border-b-2 border-green-600':'text-gray-500'}`}>＋ 新增帳號</button></div><div className="flex-1 overflow-y-auto p-4 space-y-2">{accMgrTab==='list'&&accList.map(acc=>(<div key={acc.id} className="bg-white border rounded-xl p-3 flex items-center gap-2"><div className="flex flex-col"><button onClick={()=>moveAccount(acc.id,'up')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="18 15 12 9 6 15"/></svg></button><button onClick={()=>moveAccount(acc.id,'down')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg></button></div><div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-sm">{(acc.displayName||'?').charAt(0)}</div><div className="flex-1 min-w-0"><div className="font-black text-sm">{acc.displayName}</div><span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${ROLE_COLORS[acc.role]||'bg-gray-100 text-gray-600 border-gray-300'}`}>{ROLE_LABELS[acc.role]||acc.role}</span></div>{acc.id===currentAccount?.id&&<span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-black border">登入中</span>}<div className="flex gap-1"><button onClick={()=>setEditRoleTarget({...acc})} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg border border-blue-200"><SvgIcon name="edit" className="w-3.5 h-3.5"/></button><button onClick={()=>doResetPassword(acc)} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg border border-amber-200"><SvgIcon name="wrench" className="w-3.5 h-3.5"/></button>{acc.id!==currentAccount?.id&&<button onClick={()=>{if(window.confirm('確定刪除「'+acc.displayName+'」?'))doDeleteAccount(acc.id);}} className="p-1.5 text-red-600 bg-red-50 rounded-lg border border-red-200"><SvgIcon name="trash" className="w-3.5 h-3.5"/></button>}</div></div>))}{accMgrTab==='add'&&(<div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><label className="block text-xs font-black text-gray-500 mb-1">帳號名稱</label><input type="text" value={newAccForm.username} onChange={e=>setNewAccForm(p=>({...p,username:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="英文+數字"/></div><div><label className="block text-xs font-black text-gray-500 mb-1">顯示名稱</label><input type="text" value={newAccForm.displayName} onChange={e=>setNewAccForm(p=>({...p,displayName:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="中文姓名"/></div></div><select value={newAccForm.role} onChange={e=>setNewAccForm(p=>({...p,role:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none bg-white"><option value="admin">管理員</option><option value="editor">編輯者</option><option value="viewer">唯讀者</option></select><div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-700 font-bold">📌 密碼由帳號持有者首次登入時自行設定</div>{newAccError&&<div className="bg-red-50 text-red-700 text-sm font-bold px-3 py-2 rounded-xl border border-red-200">{newAccError}</div>}<button onClick={doAddAccount} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-black">建立帳號</button></div>)}</div></div></div>)}
+                  {showAccMgr&&isSuperAdmin&&(<div className="fixed inset-0 bg-black/60 z-[400] flex items-center justify-center p-4 print:hidden"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"><div className="bg-slate-800 px-5 py-4 flex justify-between items-center flex-shrink-0"><h2 className="font-black text-white text-lg">帳號管理</h2><button onClick={()=>setShowAccMgr(false)} className="text-slate-400 hover:text-white"><SvgIcon name="x" className="w-5 h-5"/></button></div><div className="flex border-b flex-shrink-0"><button onClick={()=>setAccMgrTab('list')} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='list'?'bg-white text-blue-700 border-b-2 border-blue-600':'text-gray-500'}`}>帳號列表 ({accList.length})</button><button onClick={()=>{setAccMgrTab('add');setNewAccError('');}} className={`flex-1 py-3 text-sm font-bold ${accMgrTab==='add'?'bg-white text-green-700 border-b-2 border-green-600':'text-gray-500'}`}>＋ 新增帳號</button></div><div className="flex-1 overflow-y-auto p-4 space-y-2">{accMgrTab==='list'&&accList.map(acc=>(<div key={acc.id} className="bg-white border rounded-xl p-3 flex items-center gap-2"><div className="flex flex-col"><button onClick={()=>moveAccount(acc.id,'up')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="18 15 12 9 6 15"/></svg></button><button onClick={()=>moveAccount(acc.id,'down')} className="p-0.5 text-gray-400 hover:text-gray-700"><svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg></button></div><div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-sm">{(acc.displayName||'?').charAt(0)}</div><div className="flex-1 min-w-0"><div className="font-black text-sm">{acc.displayName}</div><span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full border ${ROLE_COLORS[acc.role]||'bg-gray-100 text-gray-600 border-gray-300'}`}>{ROLE_LABELS[acc.role]||acc.role}</span></div>{acc.id===currentAccount?.id&&<span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-black border">登入中</span>}<div className="flex gap-1"><button onClick={()=>setEditRoleTarget({...acc})} className="p-1.5 text-blue-600 bg-blue-50 rounded-lg border border-blue-200"><SvgIcon name="edit" className="w-3.5 h-3.5"/></button><button onClick={()=>doResetPassword(acc)} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg border border-amber-200"><SvgIcon name="wrench" className="w-3.5 h-3.5"/></button>{acc.id!==currentAccount?.id&&<button onClick={()=>{if(window.confirm('確定刪除「'+acc.displayName+'」?'))doDeleteAccount(acc.id);}} className="p-1.5 text-red-600 bg-red-50 rounded-lg border border-red-200"><SvgIcon name="trash" className="w-3.5 h-3.5"/></button>}</div></div>))}{accMgrTab==='add'&&(<div className="space-y-3"><div className="grid grid-cols-2 gap-3"><div><label className="block text-xs font-black text-gray-500 mb-1">帳號名稱</label><input type="text" value={newAccForm.username} onChange={e=>setNewAccForm(p=>({...p,username:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="英文+數字"/></div><div><label className="block text-xs font-black text-gray-500 mb-1">顯示名稱</label><input type="text" value={newAccForm.displayName} onChange={e=>setNewAccForm(p=>({...p,displayName:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="中文姓名"/></div></div><select value={newAccForm.role} onChange={e=>setNewAccForm(p=>({...p,role:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none bg-white"><option value="admin">管理員</option><option value="editor">編輯者</option><option value="viewer">唯讀者</option></select><input type="password" value={newAccForm.password} onChange={e=>setNewAccForm(p=>({...p,password:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="密碼（至少6碼）"/><input type="password" value={newAccForm.confirm} onChange={e=>setNewAccForm(p=>({...p,confirm:e.target.value}))} className="w-full border-2 rounded-lg p-2 font-bold text-sm outline-none" placeholder="確認密碼"/>{newAccError&&<div className="bg-red-50 text-red-700 text-sm font-bold px-3 py-2 rounded-xl border border-red-200">{newAccError}</div>}<button onClick={doAddAccount} className="w-full py-2.5 bg-green-600 text-white rounded-xl font-black">建立帳號</button></div>)}</div></div></div>)}
                   {editRoleTarget&&isSuperAdmin&&(<div className="fixed inset-0 bg-black/60 z-[500] flex items-center justify-center p-4 print:hidden"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"><div className="bg-blue-50 border-b border-blue-200 px-5 py-4 flex justify-between items-center"><h3 className="font-black text-blue-900">編輯角色 — {editRoleTarget.displayName}</h3><button onClick={()=>setEditRoleTarget(null)} className="text-blue-400 p-1"><SvgIcon name="x" className="w-5 h-5"/></button></div><div className="p-5 space-y-3">{[{v:'superadmin',l:'最高管理員',d:'全功能+帳號管理'},{v:'admin',l:'管理員',d:'全功能（除帳號管理）'},{v:'editor',l:'編輯者',d:'排班+請假'},{v:'viewer',l:'唯讀者',d:'僅查看行程、編輯請假'}].map(r=>(<label key={r.v} className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer ${editRoleTarget.role===r.v?'border-blue-400 bg-blue-50':'border-gray-200'}`}><input type="radio" name="editRole" value={r.v} checked={editRoleTarget.role===r.v} onChange={()=>setEditRoleTarget(p=>({...p,role:r.v}))} className="w-4 h-4"/><div><div className="font-black text-sm">{r.l}</div><div className="text-xs text-gray-500">{r.d}</div></div></label>))}<button onClick={()=>doUpdateRole(editRoleTarget,editRoleTarget.role)} className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-black">確認更新</button></div></div></div>)}
 
                   {dialog.isOpen && (
@@ -1714,11 +1529,11 @@ if (!db) return;
                                       <div className="grid grid-cols-2 gap-4 mb-4">
                                           <div>
                                               <label className="block text-sm font-bold text-gray-600 mb-1.5">經緯儀編號</label>
-                                              <input type="text" placeholder="輸入編號" autoComplete="off" value={batchData.eqTheodolite} onChange={e=>setBatchData({...batchData, eqTheodolite: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
+                                              <input type="text" placeholder="輸入編號" value={batchData.eqTheodolite} onChange={e=>setBatchData({...batchData, eqTheodolite: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
                                           </div>
                                           <div>
                                               <label className="block text-sm font-bold text-gray-600 mb-1.5">水準儀編號</label>
-                                              <input type="text" placeholder="輸入編號" autoComplete="off" value={batchData.eqLevel} onChange={e=>setBatchData({...batchData, eqLevel: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
+                                              <input type="text" placeholder="輸入編號" value={batchData.eqLevel} onChange={e=>setBatchData({...batchData, eqLevel: e.target.value})} className="p-3 border rounded-lg w-full shadow-sm focus:ring-purple-500 outline-none text-lg font-black text-center" />
                                           </div>
                                       </div>
                                       <div className="space-y-4 pt-4 border-t border-gray-200">
@@ -1844,7 +1659,7 @@ if (!db) return;
 
                             <div className="p-3 md:p-5 flex-1 overflow-y-auto custom-scrollbar relative">
                                 {currentTab === 'task' && !isViewer && (
-                                  <form onSubmit={handleTaskSubmit} autoComplete="new-password" className="space-y-4">
+                                  <form onSubmit={handleTaskSubmit} className="space-y-4">
                                     <div className="flex justify-between items-center mb-1">
                                       <h2 className="text-lg font-black text-gray-800 flex items-center gap-1.5">
                                           {editingTaskId ? <SvgIcon name="edit" className="w-5 h-5 text-orange-500" /> : <SvgIcon name="plus" className="w-5 h-5 text-blue-600" />}
@@ -1860,10 +1675,10 @@ if (!db) return;
                                     </div>
                                     <div className="grid grid-cols-4 gap-3">
                                       <div className="col-span-2"><label className="text-xs font-bold text-gray-500 mb-1 block">案名</label><AutocompleteInput name="projectName" value={formData.projectName} onChange={changeFd} options={uniqueProjectNames} placeholder="輸入案名" required /></div>
-                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="text" name="gt_households_x" autoComplete="new-password" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
+                                      <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="search" name="households" autoComplete="off" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
                                       <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">項目</label><select name="itemType" value={formData.itemType} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500 bg-white">{ITEM_TYPES.map(t=><option key={t}>{t}</option>)}</select></div>
                                     </div>
-                                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">備註</label><input type="text" name="gt_notes_x" autoComplete="new-password" value={formData.notes} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-medium focus:border-blue-500" placeholder="例: 114鑑443 或 1(負責人)"/></div>
+                                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">備註</label><input type="search" name="notes" autoComplete="off" value={formData.notes} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-medium focus:border-blue-500" placeholder="例: 114鑑443 或 1(負責人)"/></div>
                                     
                                     {renderFormContent(formData, changeFd, toggleAtt, toggleCr, toggleEq, busyDataForForm, false)}
                                     
@@ -2067,7 +1882,6 @@ if (!db) return;
                                               <SvgIcon name="upload" className="w-4 h-4" /> 📤 匯入備份還原資料
                                               <input type="file" accept=".json" onChange={importAllData} ref={fileInputRef} className="hidden" />
                                           </label>
-                                          <div className="flex justify-end mt-1"><button onClick={clearYearData} className="text-[11px] text-red-400 hover:text-red-600 border border-red-200 hover:border-red-400 bg-white hover:bg-red-50 rounded-lg px-3 py-1 font-bold flex items-center gap-1 transition-colors no-print"><SvgIcon name="trash" className="w-3 h-3" /> 清空年度行程資料</button></div>
                                       </div>
                                   </div>
 
@@ -2161,7 +1975,7 @@ if (!db) return;
                                               <button onClick={()=>{
                                                 const done=!task.siteVisitDone;
                                                 setTasks(prev=>prev.map(t=>t.id===task.id?{...t,siteVisitDone:done}:t));
-                                                if(db)setDoc(doc(db,'artifacts',appId,'public','data','tasks',String(task.id)),{...task,siteVisitDone:done}).catch(()=>{});
+                                                if(db&&user)setDoc(doc(db,'artifacts',appId,'public','data','tasks',String(task.id)),{...task,siteVisitDone:done}).catch(()=>{});
                                               }} className={`p-1 rounded border text-xs font-bold flex items-center gap-0.5 ${task.siteVisitDone?'bg-green-100 text-green-700 border-green-300':'bg-white text-gray-400 border-gray-200'}`} title="會勘完成"><SvgIcon name="check" className="w-3.5 h-3.5"/>{task.siteVisitDone?'完成':'會勘'}</button>
                                                                                             <button onClick={()=>copyTask(task)} className="p-1 text-emerald-600 bg-white hover:bg-emerald-50 rounded border border-emerald-200 shadow-sm" title="複製"><SvgIcon name="copy" className="w-3.5 h-3.5" /></button>
                                               <button onClick={()=>editTask(task)} className="p-1 text-blue-600 bg-white hover:bg-blue-50 rounded border border-blue-200 shadow-sm" title="編輯"><SvgIcon name="edit" className="w-3.5 h-3.5" /></button>
@@ -2183,7 +1997,7 @@ if (!db) return;
                                     {calendarWeeks.map((week, wIdx) => {
                                         const isExpanded = expandedWeekIdx === wIdx;
                                         return (
-                                          <div key={wIdx} className={`relative grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded?'h-auto':'min-h-[160px]'}`}>{isExpanded&&<button onClick={(e)=>{e.stopPropagation();setExpandedWeekIdx(null);}} className="absolute top-0 right-0 z-30 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-bl cursor-pointer hover:bg-blue-700 no-print">▲ 收合</button>}
+                                          <div key={wIdx} className={`grid grid-cols-7 gap-[1px] transition-all duration-300 ${isExpanded ? 'h-auto' : 'min-h-[160px]'}`}>
                                             {week.map((day, dIdx) => {
                                               const availCount = getAvailableFieldCount(day.date);
                                               let dayTasks = tasks.filter(t => t.date === day.date);
@@ -2203,10 +2017,10 @@ if (!db) return;
                                                 <div key={dIdx} 
                                                      onClick={(e) => {
                                                        if(e.target.tagName==='INPUT' || e.target.tagName==='BUTTON' || e.target.tagName==='path') return;
-                                                       setFormData(prev => ({...prev, startDate: day.date, endDate: day.date, households: '', notes: '', eqTheodolite: '', eqLevel: '', projectName: '', attendees: [], cars: []}));
-                                                        // 點格子只設定日期
-                                                        if(expandedWeekIdx!==wIdx)setExpandedWeekIdx(wIdx);
-
+                                                       setFormData(prev => ({...prev, startDate: day.date, endDate: day.date}));
+                                                       setActiveTab('task');
+                                                       if (expandedWeekIdx === wIdx && formData.startDate === day.date) setExpandedWeekIdx(null);
+                                                       else setExpandedWeekIdx(wIdx);
                                                      }}
                                                      className={`p-1.5 cursor-pointer hover:bg-blue-50/50 transition-colors flex flex-col relative group ${day.currentMonth ? 'bg-white' : 'bg-gray-50/80 text-gray-400'} ${isExpanded ? 'min-h-[250px]' : 'h-full'} ${isToday ? 'ring-2 ring-blue-500 ring-inset bg-blue-50/10' : ''}`}>
                                                   <div className="flex justify-between items-start mb-1 flex-shrink-0 relative z-10">
@@ -2218,7 +2032,7 @@ if (!db) return;
                                                     </div>
                                                     {!searchQuery && <span className={`text-[8px] px-1 py-0.5 rounded font-black shadow-sm border ${availCount >= 3 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : availCount > 0 ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-red-100 text-red-700 border-red-200'}`}>剩{availCount}</span>}
                                                   </div>
-                                                  <div className={`flex-1 space-y-0.5 relative z-10 ${isExpanded?'overflow-visible':'overflow-hidden'}`}>
+                                                  <div className={`flex-1 space-y-0.5 custom-scrollbar relative z-10 ${isExpanded ? 'overflow-y-auto max-h-[250px] pr-0.5 pb-1' : 'overflow-hidden'}`}>
                                                     {dayLeaves.length > 0 && (
                                                       <div className="text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm bg-red-50 text-red-800 border-red-200 break-words line-clamp-2">
                                                           [假] {dayLeaves.map(l => `${getPrintName(l.person)}${l.leaveType !== '全天' ? `(${l.leaveType})` : ''}`).join('、')}
@@ -2231,7 +2045,7 @@ if (!db) return;
                                                         <span className="truncate">{item.time} {item.name}</span>
                                                       </div>
                                                     ))}
-                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div onClick={(e)=>{e.stopPropagation();setExpandedWeekIdx(wIdx);}} className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm cursor-pointer hover:bg-blue-200/70">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項 ▼</div>}
+                                                    {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
                                                   </div>
                                                 </div>
                                               )
