@@ -445,6 +445,91 @@
                 setDialog({ isOpen: true, type: 'alert', title: safeStr(title), message: safeStr(message), confirmText: '我知道了', cancelText: '', onConfirm: null, onCancel: null });
               };
 
+              // ===== Firestore 帳號同步 =====
+              const FS_ACCS_PATH = ['artifacts', appId, 'public', 'data', 'settings', 'accounts'];
+
+              const loadAccountsFromFS = async () => {
+                if (!db) return;
+                try {
+                  const snap = await getDoc(doc(db, ...FS_ACCS_PATH));
+                  const localList = getAccounts();
+                  if ((snap.exists===true||!!snap.exists) && snap.data && snap.data().list && snap.data().list.length > 0) {
+                    const fsList = snap.data().list;
+                    let needWriteBack = false;
+                    const merged = fsList.map(fa => {
+                      const la = localList.find(a => a.username === fa.username);
+                      if (!la) return fa;
+                      if (fa.passwordHash) return {...fa};
+                      const curAcc = getSession();
+                      if (la.passwordHash && curAcc && curAcc.username === fa.username) {
+                        needWriteBack = true;
+                        return {...fa, passwordHash: la.passwordHash};
+                      }
+                      return fa;
+                    });
+                    localList.forEach(la => {
+                      if (!merged.find(m => m.username === la.username)) {
+                        merged.push(la); needWriteBack = true;
+                      }
+                    });
+                    saveAccounts(merged); setAccList(merged);
+                    const curAcc = getSession();
+                    if (curAcc) {
+                      const updatedAcc = merged.find(a => a.username === curAcc.username);
+                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
+                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
+                        const newSession = {...curAcc, role: fixedRole};
+                        setCurrentAccount(newSession); saveSession(newSession);
+                      }
+                    }
+                    if (needWriteBack) setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
+                  } else if (localList.length > 0) {
+                    setDoc(doc(db,...FS_ACCS_PATH),{list:localList,updatedAt:new Date().toISOString()}).catch(()=>{});
+                    setAccList(localList);
+                  }
+                } catch(e) { console.log('帳號讀取失敗', e); }
+              };
+
+              const saveAccountsToFS = async (accs) => {
+                saveAccounts(accs); setAccList(accs);
+                if (!db) return;
+                try {
+                  await setDoc(doc(db, ...FS_ACCS_PATH), {list: accs, updatedAt: new Date().toISOString()});
+                } catch(e) { console.log('帳號寫入失敗', e); }
+              };
+
+              // 頁面載入時從 Firestore 讀帳號 + 即時監聽角色變更
+              useEffect(() => {
+                if (!db) return;
+                loadAccountsFromFS();
+                const unsubAccs = onSnapshot(doc(db,...FS_ACCS_PATH), (snap) => {
+                  if ((snap.exists===true||!!snap.exists) && snap.data && snap.data().list) {
+                    const fsList = snap.data().list;
+                    const localList = getAccounts();
+                    const merged = fsList.map(fa => {
+                      const la = localList.find(a => a.username === fa.username);
+                      if (!la) return fa;
+                      if (fa.passwordHash) return {...fa};
+                      const curAcc = getSession();
+                      if (la.passwordHash && curAcc && curAcc.username === fa.username) return {...fa, passwordHash: la.passwordHash};
+                      return fa;
+                    });
+                    saveAccounts(merged); setAccList(merged);
+                    const curAcc = getSession();
+                    if (curAcc) {
+                      const updatedAcc = merged.find(a => a.username === curAcc.username);
+                      if (updatedAcc && updatedAcc.role !== curAcc.role) {
+                        const fixedRole = getFixedRole(updatedAcc.displayName, updatedAcc.username, updatedAcc.role);
+                        const newSession = {...curAcc, role: fixedRole};
+                        setCurrentAccount(newSession); saveSession(newSession);
+                      }
+                    }
+                  }
+                }, ()=>{});
+                return () => unsubAccs();
+              }, []);
+
+
               // 💡 匯入資料功能
               const importAllData = (event) => {
                   const file = event.target.files[0];
@@ -1317,38 +1402,51 @@
                 return role;
               };
               const doLogin = async () => {
-                const accs = getAccounts();
+                // 先從 Firestore 讀最新帳號（取得最新角色和密碼狀態）
+                let accs = getAccounts();
+                try {
+                  const fsSnap = await getDoc(doc(db,...FS_ACCS_PATH));
+                  if((fsSnap.exists===true||!!fsSnap.exists) && fsSnap.data && fsSnap.data().list) {
+                    const fsList = fsSnap.data().list;
+                    accs = fsList.map(fa=>{
+                      const la=accs.find(a=>a.username===fa.username);
+                      if(!la) return fa;
+                      if(fa.passwordHash) return {...fa};
+                      if(la.passwordHash && fa.username===loginForm.username) return {...fa,passwordHash:la.passwordHash};
+                      return fa;
+                    });
+                    saveAccounts(accs); setAccList(accs);
+                  }
+                } catch(e){}
                 const found = accs.find(a => a.username === loginForm.username);
                 if (!found) { setLoginForm(p=>({...p,error:'請先選擇使用者。'})); return; }
                 if (!loginForm.password) { setLoginForm(p=>({...p,error:'請輸入密碼。'})); return; }
                 const email = toEmail(found.username);
                 if (found.passwordHash === null) {
                   if (loginForm.password.length < 6) { setLoginForm(p=>({...p,error:'首次登入，請設定至少 6 碼密碼。'})); return; }
-                  try {
-                    let fbUser;
-                    try { const c=await createUserWithEmailAndPassword(auth,email,loginForm.password); fbUser=c.user; }
-                    catch(e) { if(e.code==='auth/email-already-in-use'){const c=await signInWithEmailAndPassword(auth,email,loginForm.password);fbUser=c.user;}else throw e; }
-                    await saveUserRole(fbUser.uid, found.role, found.displayName);
-                    const _fixedR=getFixedRole(found.displayName,found.username,found.role);
-                    const loggedIn={...found,id:fbUser.uid,passwordHash:'set',role:_fixedR,email};
-                    const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
-                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
-                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
-                  } catch(err) { setLoginForm(p=>({...p,error:'建立帳號失敗：'+(err.message||err.code)})); }
+                  // 純本地 hash，不依賴 Firebase Auth
+                  const pwHash=hashPw(loginForm.password);
+                  const _fixedR=getFixedRole(found.displayName,found.username,found.role);
+                  const loggedIn={...found,passwordHash:pwHash,role:_fixedR,email};
+                  const upd=accs.map(a=>a.username===found.username?{...loggedIn}:a);
+                  saveAccountsToFS(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
+                  setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  try { createUserWithEmailAndPassword(auth,email,loginForm.password).catch(()=>{}); } catch(e){}
                 } else {
-                  try {
-                    const c=await signInWithEmailAndPassword(auth,email,loginForm.password);
-                    // 優先用 localStorage 的 role（doUpdateRole 已更新），Firebase 只是備份
-                    const role=getFixedRole(found.displayName,found.username,found.role);
-                    const loggedIn={...found,id:c.user.uid,role,email};
-                    const upd=accs.map(a=>a.username===found.username?{...a,role}:a);
-                    saveAccounts(upd); setAccList(upd); setCurrentAccount(loggedIn); saveSession(loggedIn);
-                    setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
-                  } catch(err) {
-                    setLoginForm(p=>({...p,error:['auth/invalid-credential','auth/wrong-password'].includes(err.code)?'密碼錯誤。':'登入失敗：'+(err.message||err.code)}));
+                  // 純本地 hash 驗證
+                  const _inputHash=hashPw(loginForm.password);
+                  if(_inputHash!==found.passwordHash){
+                    setLoginForm(p=>({...p,error:'密碼錯誤，請重試。'}));return;
                   }
+                  const _role=getFixedRole(found.displayName,found.username,found.role);
+                  const loggedIn={...found,role:_role,email};
+                  setCurrentAccount(loggedIn); saveSession(loggedIn);
+                  setLoginPage(false); setLoginForm({username:'',password:'',error:'',isFirst:false});
+                  try { signInWithEmailAndPassword(auth,email,loginForm.password).catch(()=>{}); } catch(e){}
                 }
               };
+
+
 
               const doLogout = async () => {
                 try { if(auth) await fbSignOut(auth); } catch(e){}
@@ -1391,7 +1489,7 @@
                 }
                 if(acc.id===currentAccount?.id&&newRole!=='superadmin'){alert('不能降低自己的最高管理員權限！');return;}
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,role:newRole}:a);
-                saveAccounts(upd); setAccList(upd);
+                saveAccountsToFS(upd);
                 if(acc.id===currentAccount?.id){const newAcc={...currentAccount,role:newRole};setCurrentAccount(newAcc);saveSession(newAcc);}
                 if(db&&acc.id&&!acc.id.startsWith('u_')) saveUserRole(acc.id,newRole,acc.displayName).catch(()=>{});
                 logAction('角色變更',`${acc.displayName}: ${ROLE_LABELS[acc.role]||acc.role} → ${ROLE_LABELS[newRole]||newRole}`);
