@@ -452,22 +452,16 @@
                   const localList = getAccounts();
                   if ((snap.exists===true||!!snap.exists) && snap.data && snap.data().list && snap.data().list.length > 0) {
                     const fsList = snap.data().list;
-                    let needWriteBack = false;
+                    // Firestore 為唯一真相來源，只保留密碼 hash 同步
                     const merged = fsList.map(fa => {
                       const la = localList.find(a => a.username === fa.username);
                       if (!la) return fa;
                       if (fa.passwordHash) return {...fa};
                       const curAcc = getSession();
                       if (la.passwordHash && curAcc && curAcc.username === fa.username) {
-                        needWriteBack = true;
                         return {...fa, passwordHash: la.passwordHash};
                       }
                       return fa;
-                    });
-                    localList.forEach(la => {
-                      if (!merged.find(m => m.username === la.username)) {
-                        merged.push(la); needWriteBack = true;
-                      }
                     });
                     saveAccounts(merged); setAccList(merged);
                     const curAcc = getSession();
@@ -479,7 +473,6 @@
                         setCurrentAccount(newSession); saveSession(newSession);
                       }
                     }
-                    if (needWriteBack) setDoc(doc(db,...FS_ACCS_PATH),{list:merged,updatedAt:new Date().toISOString()}).catch(()=>{});
                   } else if (localList.length > 0) {
                     setDoc(doc(db,...FS_ACCS_PATH),{list:localList,updatedAt:new Date().toISOString()}).catch(()=>{});
                     setAccList(localList);
