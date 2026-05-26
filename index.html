@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>外業行程排班系統</title>
+    <title>外業行程排班系統 (極速免登出版)</title>
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cGF0aCBkPSJNNTAsMiBMOTgsMjIgTDk4LDYyIFE5OCw4OCA1MCw5OCBRMiw4OCAyLDYyIEwyLDIyIFoiIGZpbGw9IiMxYTVjMmEiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2NyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iNDQiIGZpbGw9IndoaXRlIj5IRjwvdGV4dD4KPC9zdmc+">
     <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cGF0aCBkPSJNNTAsMiBMOTgsMjIgTDk4LDYyIFE5OCw4OCA1MCw5OCBRMiw4OCAyLDYyIEwyLDIyIFoiIGZpbGw9IiMxYTVjMmEiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIvPgogIDx0ZXh0IHg9IjUwIiB5PSI2NyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1mYW1pbHk9IkFyaWFsLHNhbnMtc2VyaWYiIGZvbnQtd2VpZ2h0PSI5MDAiIGZvbnQtc2l6ZT0iNDQiIGZpbGw9IndoaXRlIj5IRjwvdGV4dD4KPC9zdmc+">
@@ -78,7 +78,7 @@
                 signInWithEmailAndPassword: function(auth,e,p){ return auth.signInWithEmailAndPassword(e,p); },
                 fbSignOut: function(auth){ return auth.signOut(); },
                 getFirestore: function(app){ return firebase.firestore(app); },
-                collection: function(db,col){ return db.collection(col); },
+                collection: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.collection(a.join('/')); },
                 doc: function(db){ var a=Array.prototype.slice.call(arguments,1); return db.doc(a.join('/')); },
                 getDoc: function(ref){ return ref.get(); },
                 setDoc: function(ref,data,opts){ return (opts&&opts.merge)?ref.set(data,{merge:true}):ref.set(data); },
@@ -86,13 +86,10 @@
                 onSnapshot: function(ref,cb){ return ref.onSnapshot(cb); },
             };
             window.dispatchEvent(new Event('firebase-ready'));
-        })();
-        </script>
-
-    <script type="text/babel">
+        })()
         const initApp = () => {
             const { useState, useMemo, useEffect, Fragment } = React;
-            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
+            const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
 
             // --- 雙重防丟失：安全的本地儲存存取 ---
             const safeSetStorage = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
@@ -361,7 +358,7 @@
 
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
-                if (!user || !db) return;
+                if (!db) return;
                 setDbConnected(true);
 
                 const unsubTasks = onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'tasks'), (s) => {
@@ -373,18 +370,18 @@
                 }, () => {});
 
                 const unsubPersonnel = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), (s) => {
-                    if (s.exists() && s.data().names) {
+                    if ((s.exists===true||!!s.exists) && s.data && s.data().names) {
                         setPersonnel(s.data().names); setManagers(s.data().managers||[]); setIndoors(s.data().indoors||[]); setShortNames(s.data().shortNames||{}); 
                     } else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'personnel'), { names: CUSTOM_SORT_ORDER, managers: DEFAULT_MANAGERS, indoors: DEFAULT_INDOORS, shortNames: {} }).catch(()=>{});
                 }, () => {});
 
                 const unsubCars = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), (s) => {
-                    if (s.exists() && s.data().list) setCars(s.data().list);
+                    if ((s.exists===true||!!s.exists) && s.data && s.data().list) setCars(s.data().list);
                     else setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'cars'), { list: DEFAULT_CARS }).catch(()=>{});
                 }, () => {});
 
                 const unsubEqs = onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'equipments'), (s) => {
-                    if (s.exists() && s.data().list) {
+                    if ((s.exists===true||!!s.exists) && s.data && s.data().list) {
                         const parsedList = (s.data().list || []).filter(item => item !== null && item !== undefined).map(item => typeof item === 'string' ? { name: item, category: '其他' } : { name: safeStr(item?.name||item), category: safeStr(item?.category||'其他') });
                         setCustomEqsList(parsedList);
                     } else {
@@ -393,7 +390,7 @@
                 }, () => {});
 
                 return () => { unsubTasks(); unsubLeaves(); unsubPersonnel(); unsubCars(); unsubEqs(); };
-              }, [user]);
+              }, []);
 
               useEffect(() => {
                 const year = viewDateStr.split('-')[0];
