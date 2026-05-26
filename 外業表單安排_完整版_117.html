@@ -86,7 +86,7 @@
                 onSnapshot: function(ref,cb){ return ref.onSnapshot(cb); },
             };
             window.dispatchEvent(new Event('firebase-ready'));
-        })()
+        })();
         const initApp = () => {
             const { useState, useMemo, useEffect, Fragment } = React;
             const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
