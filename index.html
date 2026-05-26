@@ -342,8 +342,13 @@
               useEffect(()=>{
                 if(personnel.length===0)return;
                 let accs=getAccounts(),changed=false;
-                if(accs.length===0){accs=personnel.map(n=>({id:'u_'+n,username:n,displayName:n,role:n==='雅淳'?'superadmin':'editor',passwordHash:null,createdAt:new Date().toISOString()}));changed=true;}
-                else{personnel.forEach(n=>{if(!accs.find(a=>a.username===n)){accs.push({id:'u_'+n,username:n,displayName:n,role:'editor',passwordHash:null,createdAt:new Date().toISOString()});changed=true;}});accs=accs.map(a=>{const fr=getFixedRole(a.displayName,a.username,a.role);if(fr!==a.role){changed=true;return{...a,role:fr};}return a;});}
+                if(accs.length===0){
+                  // 第一次初始化才從 personnel 建帳號
+                  accs=personnel.map(n=>({id:'u_'+n,username:n,displayName:n,role:n==='雅淳'?'superadmin':'editor',passwordHash:null,createdAt:new Date().toISOString()}));changed=true;
+                } else {
+                  // 之後只做角色修正，不補新帳號（避免已刪除帳號復活）
+                  accs=accs.map(a=>{const fr=getFixedRole(a.displayName,a.username,a.role);if(fr!==a.role){changed=true;return{...a,role:fr};}return a;});
+                }
                 if(changed){saveAccounts(accs);setAccList(accs);}else setAccList(accs);
               },[personnel]);
 
@@ -355,6 +360,26 @@
                 initAuth();
                 return onAuthStateChanged(auth, setUser);
               }, []);
+
+              // 登入頁面時從 Firestore 即時監聽帳號清單（確保刪除/新增即時同步）
+              useEffect(() => {
+                if (!db || !loginPage) return;
+                const unsubLogin = onSnapshot(doc(db,...FS_ACCS_PATH), (snap) => {
+                  if ((snap.exists===true||!!snap.exists) && snap.data && snap.data().list && snap.data().list.length > 0) {
+                    const fsList = snap.data().list;
+                    const localList = getAccounts();
+                    const merged = fsList.map(fa => {
+                      const la = localList.find(a => a.username === fa.username);
+                      if (!la) return fa;
+                      if (fa.passwordHash) return {...fa};
+                      if (la.passwordHash) return {...fa, passwordHash: la.passwordHash};
+                      return fa;
+                    });
+                    saveAccounts(merged); setAccList(merged);
+                  }
+                }, ()=>{});
+                return () => unsubLogin();
+              }, [loginPage]);
 
               // Firebase 監聽 (雲端資料覆蓋本地)
               useEffect(() => {
