@@ -1302,7 +1302,7 @@
                                       })}
                                   </tbody>
                               </table>
-                              <div style={{breakBefore:"page",pageBreakBefore:"always",marginTop:0}}>
+                              {!isViewer && <div style={{breakBefore:"page",pageBreakBefore:"always",marginTop:0}}>
                                   <div className="flex justify-between items-start mb-3"><div style={{width:'120px'}}></div><h2 className="text-2xl font-black text-center text-black">外勤次數智慧分析 ({formatMinguo(viewWeekDates[0])} 起)</h2><div style={{width:'120px',textAlign:'right',fontSize:'9px',color:'#9ca3af',paddingTop:'6px'}}>最後更新：{(()=>{try{const l=JSON.parse(localStorage.getItem('__editlogs')||'[]');return l[0]?l[0].time:'';}catch(e){return '';}})()}</div></div>
                                   <table className="ptb w-full text-base text-black text-center" border={1} cellSpacing="0" cellPadding="4">
                                       <thead className="bg-gray-200" style={{ backgroundColor: '#E5E7EB' }}>
@@ -1324,7 +1324,7 @@
                                           )})}
                                       </tbody>
                                   </table>
-                              </div>
+                              </div>}
                           </div>
                   </div>
                 );
@@ -1469,13 +1469,13 @@
               const doDeleteAccount = async (id) => {
                 if(id===currentAccount?.id){alert('不能刪除自己！');return;}
                 if(db) await setDoc(doc(db,'artifacts',appId,'public','data','userRoles',id),{role:'disabled'},{merge:true}).catch(()=>{});
-                const upd=getAccounts().filter(a=>a.id!==id); saveAccounts(upd); setAccList(upd);
+                const upd=getAccounts().filter(a=>a.id!==id); await saveAccountsToFS(upd);
               };
 
               const doResetPassword = async (acc) => {
                 if(!window.confirm(`確定要重設「${acc.displayName}」的密碼？\n對方下次登入時可自行設定新密碼。`)) return;
                 const upd=getAccounts().map(a=>a.id===acc.id?{...a,passwordHash:null}:a);
-                saveAccounts(upd); setAccList(upd);
+                await saveAccountsToFS(upd);
                 logAction('重設密碼',`${acc.displayName}`);
                 showAlert('重設完成',`已重設「${acc.displayName}」的密碼，對方下次登入時可設定新密碼。`);
               };
