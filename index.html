@@ -1291,7 +1291,7 @@
 {t.notes && <span style={{fontSize:"11px",color:"#1e3a8a",fontWeight:"bold",marginLeft:"4px"}}>※ {t.notes}</span>}
                                                               {t.status==='cancelled' && <div className="text-red-600 text-xs mt-0.5">【已取消：{t.cancelReason}】</div>}
                                                           </td>
-                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} style={{fontWeight:"900",fontSize:"9px",padding:"1px",minWidth:"22px",textAlign:"center"}}>{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
+                                                          {[...Array(maxAttendees)].map((_,i)=><td key={i} style={{fontWeight:"900",fontSize:"13px",padding:"2px",minWidth:"28px",textAlign:"center"}}>{(t.attendees||[])[i]?getPrintName((t.attendees||[])[i]):''}</td>)}
                                                           <td className="font-black text-base">{(t.attendees||[]).length||''}</td>
                                                           <td className="font-black text-lg text-blue-800" style={{ color: '#1E40AF' }}>{formatTimeDisplay(t.time, t.timeSlot)}</td>
                                                           <td className="font-bold text-sm">{tCars.length>0?tCars.join(','):''}</td>
