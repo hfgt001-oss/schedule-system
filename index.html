@@ -930,9 +930,13 @@
                 const dayTasks = tasks.filter(t => safeStr(t.date) === dateStr && t.status !== 'cancelled');
                 const dayLeaves = leaves.filter(l => safeStr(l.date) === dateStr);
                 const busy = new Set();
-                dayTasks.forEach(t => (t.attendees || []).forEach(p => { if (fieldEngineers.includes(safeStr(p))) busy.add(safeStr(p)); }));
+                dayTasks.forEach(t => {
+                  if (t.status === 'tentative') return; // 暫定行程用預計人數另外扣
+                  (t.attendees || []).forEach(p => { if (fieldEngineers.includes(safeStr(p))) busy.add(safeStr(p)); });
+                });
                 dayLeaves.forEach(l => { if (fieldEngineers.includes(safeStr(l.person))) busy.add(safeStr(l.person)); });
-                const available = fieldEngineers.length - busy.size - 2; 
+                const tentativeCount = dayTasks.filter(t => t.status === 'tentative').reduce((sum, t) => sum + (parseInt(t.estimatedHeadcount, 10) || 0), 0);
+                const available = fieldEngineers.length - busy.size - tentativeCount - 2;
                 return available > 0 ? available : 0;
               };
 
@@ -1780,9 +1784,15 @@
                                     <div className="grid grid-cols-2 gap-3">
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">開始日期</label><input type="date" name="startDate" value={formData.startDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">結束日期</label><input type="date" name="endDate" value={formData.endDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
-                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時間</label><input type="text" name="time" value={formData.time} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-blue-500"/></div>
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時間</label><input type="text" name="time" value={formData.time} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-blue-500" placeholder="留空為暫定"/></div>
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">時段</label><select name="timeSlot" value={formData.timeSlot} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500 bg-white"><option>自動判定</option><option>上半天</option><option>下半天</option><option>全天</option></select></div>
                                     </div>
+                                    {(!formData.time||formData.time.trim()==='') && (
+                                      <div className="bg-amber-50 border border-amber-300 rounded-lg p-2 flex items-center gap-3">
+                                        <span className="text-xs font-black text-amber-700 whitespace-nowrap">⏳ 暫定行程</span>
+                                        <div className="flex-1"><label className="text-xs font-bold text-gray-500 mb-1 block">預計人數</label><input type="number" min="0" name="estimatedHeadcount" value={formData.estimatedHeadcount||''} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-amber-500 bg-white" placeholder="0"/></div>
+                                      </div>
+                                    )}
                                     <div className="grid grid-cols-4 gap-3">
                                       <div className="col-span-2"><label className="text-xs font-bold text-gray-500 mb-1 block">案名</label><AutocompleteInput name="projectName" value={formData.projectName} onChange={changeFd} options={uniqueProjectNames} placeholder="輸入案名" required /></div>
                                       <div className="col-span-1"><label className="text-xs font-bold text-gray-500 mb-1 block">戶數</label><input type="search" name="households" autoComplete="off" value={formData.households} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg font-bold outline-none focus:border-blue-500"/></div>
