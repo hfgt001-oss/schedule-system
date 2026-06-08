@@ -639,7 +639,7 @@
               
               const submitSingleOrNew = async (dates, bData) => {
                 const efG = (editingTaskId && formData.groupId) ? formData.groupId : (dates.length>1 ? Date.now().toString()+Math.random().toString(36).substr(2,5) : '');
-                const nT = dates.map((d, i) => { const sd = dailyOverrides[d]||bData; const {startDate, endDate, ...fd}=sd; return {...fd, date:d, groupId:dates.length>1?efG:(editingTaskId?efG:''), id:(i===0&&editingTaskId)?editingTaskId:Date.now().toString()+i}; });
+                const nT = dates.map((d, i) => { const sd = dailyOverrides[d]||bData; const {startDate, endDate, ...fd}=sd; const autoStatus = (!fd.time||fd.time.trim()==='') ? 'tentative' : (fd.status==='tentative'&&fd.time&&fd.time.trim()!=='' ? 'active' : fd.status); return {...fd, status:autoStatus, date:d, groupId:dates.length>1?efG:(editingTaskId?efG:''), id:(i===0&&editingTaskId)?editingTaskId:Date.now().toString()+i}; });
                 
                 setTasks(prev => { const filtered = editingTaskId ? prev.filter(t => t.id !== editingTaskId) : prev; return [...filtered, ...nT]; });
                 logAction(editingTaskId?'更新行程':'新增行程',`${bData.projectName||''} ${dates[0]||''}`); setEditingTaskId(null); setViewDateStr(dates[0]); resetFd();
@@ -1780,7 +1780,7 @@
                                     <div className="grid grid-cols-2 gap-3">
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">開始日期</label><input type="date" name="startDate" value={formData.startDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">結束日期</label><input type="date" name="endDate" value={formData.endDate} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500" required/></div>
-                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時間</label><input type="text" name="time" value={formData.time} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-blue-500" required/></div>
+                                      <div><label className="text-xs font-bold text-gray-500 mb-1 block">時間</label><input type="text" name="time" value={formData.time} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-black focus:border-blue-500"/></div>
                                       <div><label className="text-xs font-bold text-gray-500 mb-1 block">時段</label><select name="timeSlot" value={formData.timeSlot} onChange={changeFd} className="w-full border-2 p-1.5 rounded-lg outline-none font-bold focus:border-blue-500 bg-white"><option>自動判定</option><option>上半天</option><option>下半天</option><option>全天</option></select></div>
                                     </div>
                                     <div className="grid grid-cols-4 gap-3">
@@ -2066,12 +2066,13 @@
                                         <div key={task.id} className={`p-2 transition-colors flex items-center gap-2 ${task.id===editingTaskId?'bg-blue-50':'hover:bg-gray-50 bg-white'}`}>
                                            <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={()=>toggleSelectTask(task.id)} className={`ml-2 w-4 h-4 cursor-pointer shrink-0 rounded text-blue-600 border border-gray-400 shadow-sm ${isViewer?'hidden':''}`}/>
                                            <div className="flex-1 min-w-0 flex flex-col gap-0.5 py-1">
-                                              <div className={`font-bold ${task.status==='cancelled'?'line-through text-gray-400':'text-gray-900'} flex items-center gap-2 flex-wrap`}>
+                                              <div className={`font-bold ${task.status==='cancelled'?'line-through text-gray-400':task.status==='tentative'?'text-red-600':'text-gray-900'} flex items-center gap-2 flex-wrap`}>
                                                   <span className="text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded text-sm shadow-sm font-black tracking-tight">{formatTimeDisplay(task.time, task.timeSlot)}</span>
                                                   <span className="text-base md:text-[15px] truncate max-w-[280px]">{safeStr(task.projectName)} {task.households?<span className="text-gray-500 font-medium text-xs">({task.households}戶)</span>:''}</span>
                                                   <span className="text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded shadow-sm font-bold">[{task.itemType}]</span>
                                                   {/* 💡 修改點 3: 備註接在項目後方 */}
                                                   {task.notes && <span className="text-xs font-bold text-blue-900">※ {task.notes}</span>}
+                                                  {task.status==='tentative' && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded shadow-sm font-bold">[暫定]</span>}
                                                   {task.status==='cancelled' && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1"><SvgIcon name="slash" className="w-2.5 h-2.5" /> 取消: {task.cancelReason}</span>}
                                               </div>
                                               <div className={`flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold mt-0.5 ${task.status==='cancelled'?'opacity-50 text-gray-400':'text-gray-600'}`}>
@@ -2121,7 +2122,7 @@
                                               }
                                               
                                               const dayNum = parseInt(day.date.split('-')[2], 10);
-                                              const taskItems = dayTasks.map(t => ({ type: 'task', id: `t-${t.id}`, taskId: t.id, time: formatTimeDisplay(t.time, t.timeSlot), name: safeStr(t.projectName), color: getItemColor(t.itemType, t.status === 'cancelled'), status: t.status }));
+                                              const taskItems = dayTasks.map(t => ({ type: 'task', id: `t-${t.id}`, taskId: t.id, time: formatTimeDisplay(t.time, t.timeSlot), name: safeStr(t.projectName), color: getItemColor(t.itemType, t.status === 'cancelled'), status: t.status, tentative: t.status === 'tentative' }));
 
                                               return (
                                                 <div key={dIdx} 
@@ -2149,10 +2150,10 @@
                                                       </div>
                                                     )}
                                                     {taskItems.slice(0, isExpanded ? taskItems.length : (dayLeaves.length > 0 ? 3 : 4)).map(item => (
-                                                      <div key={item.id} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
+                                                      <div key={item.id} onClick={(e)=>{e.stopPropagation(); const t=tasks.find(x=>x.id===item.taskId); if(t&&!isViewer) editTask(t);}} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all cursor-pointer ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
                                                         <input type="checkbox" checked={selectedTaskIds.includes(item.taskId)} onChange={(e)=>{e.stopPropagation(); toggleSelectTask(item.taskId);}} className={`w-2.5 h-2.5 rounded border-gray-300 cursor-pointer flex-shrink-0 ${isViewer?'hidden':''}`} />
                                                         {item.status === 'cancelled' && <SvgIcon name="slash" className="w-2 h-2 text-red-500 absolute right-1 opacity-70" />}
-                                                        <span className="truncate">{item.time} {item.name}</span>
+                                                        <span className={`truncate ${item.tentative ? 'text-red-600' : ''}`}>{item.time} {item.name}{item.tentative ? ' [暫定]' : ''}</span>
                                                       </div>
                                                     ))}
                                                     {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
