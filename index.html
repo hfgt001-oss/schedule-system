@@ -2082,7 +2082,7 @@
                                                   <span className="text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded shadow-sm font-bold">[{task.itemType}]</span>
                                                   {/* 💡 修改點 3: 備註接在項目後方 */}
                                                   {task.notes && <span className="text-xs font-bold text-blue-900">※ {task.notes}</span>}
-                                                  {task.status==='tentative' && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded shadow-sm font-bold">[暫定]</span>}
+                                                  {task.status==='tentative' && <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded shadow-sm font-bold">[暫定{task.estimatedHeadcount ? `·${task.estimatedHeadcount}人` : ''}]</span>}
                                                   {task.status==='cancelled' && <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded shadow-sm flex items-center gap-1"><SvgIcon name="slash" className="w-2.5 h-2.5" /> 取消: {task.cancelReason}</span>}
                                               </div>
                                               <div className={`flex flex-wrap gap-x-3 gap-y-1 text-xs font-bold mt-0.5 ${task.status==='cancelled'?'opacity-50 text-gray-400':'text-gray-600'}`}>
@@ -2132,7 +2132,7 @@
                                               }
                                               
                                               const dayNum = parseInt(day.date.split('-')[2], 10);
-                                              const taskItems = dayTasks.map(t => ({ type: 'task', id: `t-${t.id}`, taskId: t.id, time: formatTimeDisplay(t.time, t.timeSlot), name: safeStr(t.projectName), color: getItemColor(t.itemType, t.status === 'cancelled'), status: t.status, tentative: t.status === 'tentative' }));
+                                              const taskItems = dayTasks.map(t => ({ type: 'task', id: `t-${t.id}`, taskId: t.id, time: formatTimeDisplay(t.time, t.timeSlot), name: safeStr(t.projectName), color: getItemColor(t.itemType, t.status === 'cancelled'), status: t.status, tentative: t.status === 'tentative', estimatedHeadcount: t.estimatedHeadcount }));
 
                                               return (
                                                 <div key={dIdx} 
@@ -2163,7 +2163,7 @@
                                                       <div key={item.id} onClick={(e)=>{e.stopPropagation(); const t=tasks.find(x=>x.id===item.taskId); if(t&&!isViewer) editTask(t);}} className={`relative flex items-center gap-0.5 text-[11px] py-0.5 px-1 leading-tight rounded font-bold border shadow-sm transition-all cursor-pointer ${item.color} ${selectedTaskIds.includes(item.taskId) ? 'ring-1 ring-blue-500 transform scale-[1.02] z-20' : ''}`}>
                                                         <input type="checkbox" checked={selectedTaskIds.includes(item.taskId)} onChange={(e)=>{e.stopPropagation(); toggleSelectTask(item.taskId);}} className={`w-2.5 h-2.5 rounded border-gray-300 cursor-pointer flex-shrink-0 ${isViewer?'hidden':''}`} />
                                                         {item.status === 'cancelled' && <SvgIcon name="slash" className="w-2 h-2 text-red-500 absolute right-1 opacity-70" />}
-                                                        <span className={`truncate ${item.tentative ? 'text-red-600' : ''}`}>{item.time} {item.name}{item.tentative ? ' [暫定]' : ''}</span>
+                                                        <span className={`truncate ${item.tentative ? 'text-red-600' : ''}`}>{item.time} {item.name}{item.tentative ? ` [暫定${item.estimatedHeadcount ? `·${item.estimatedHeadcount}人` : ''}]` : ''}</span>
                                                       </div>
                                                     ))}
                                                     {!isExpanded && taskItems.length > (dayLeaves.length > 0 ? 3 : 4) && <div className="text-[11px] text-blue-700 font-black text-center mt-0.5 bg-blue-100/50 py-0.5 rounded shadow-sm">+ {taskItems.length - (dayLeaves.length > 0 ? 3 : 4)} 項</div>}
