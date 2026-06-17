@@ -61,7 +61,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
         <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-        <script type="text/babel" data-presets="react">
+        <script>
         (function() {
             var _app = null;
             window.FirebaseAPI = {
@@ -87,6 +87,8 @@
             };
             window.dispatchEvent(new Event('firebase-ready'));
         })();
+        </script>
+        <script type="text/babel" data-presets="react">
         const initApp = () => {
             const { useState, useMemo, useEffect, Fragment } = React;
             const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, fbSignOut, getFirestore, collection, doc, getDoc, setDoc, deleteDoc, onSnapshot } = window.FirebaseAPI || {};
